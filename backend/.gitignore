@@ -1,0 +1,38 @@
+# Node
+**/node_modules/
+**/dist/
+**/build/
+**/coverage/
+**/.eslintcache
+**/.turbo/
+**/.parcel-cache/
+
+# Env / claves
+.env
+**/.env
+.env.*.local
+**/.env.*.local
+
+# Logs
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Subidas y temporales
+storage/
+**/tmp/
+tmp/
+
+# DB dumps locales
+*.sql
+*.dump
+*.bak
+
+# SO / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
