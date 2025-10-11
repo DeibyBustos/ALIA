@@ -1,0 +1,25 @@
+{
+  "name": "svc-documentos",
+  "version": "1.0.0",
+  "description": "Servicio de documentos: subida y creación de tareas de ingesta",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon --env-file ../.env src/index.js",
+    "start": "node --env-file=../.env src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "multer": "^2.0.2",
+    "mysql2": "^3.15.2",
+    "pino": "^10.0.0",
+    "pino-http": "^11.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

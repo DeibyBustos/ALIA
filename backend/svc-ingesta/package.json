@@ -1,0 +1,29 @@
+{
+  "name": "svc-ingesta",
+  "version": "1.0.0",
+  "description": "Worker de ingesta: extrae texto, trocea y genera embeddings",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon --env-file ../.env src/index.js",
+    "start": "node --env-file=../.env src/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "exceljs": "^4.4.0",
+    "express": "^5.1.0",
+    "mammoth": "^1.11.0",
+    "mysql2": "^3.15.2",
+    "openai": "^6.3.0",
+    "pdf-parse": "^2.2.9",
+    "pino": "^10.0.0",
+    "pino-http": "^11.0.0",
+    "uninstall": "^0.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

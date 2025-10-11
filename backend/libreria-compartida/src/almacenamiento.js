@@ -1,25 +1,31 @@
-/**
- * Manejo del almacenamiento de archivos
- * Genera rutas únicas para guardar archivos organizados por fecha
- * El directorio base se configura con STORAGE_DIR o usa './storage' 
- */
+// libreria-compartida/src/almacenamiento.js
 import fs from "node:fs";
 import path from "node:path";
 import slugify from "slugify";
 
-const baseDir = process.env.STORAGE_DIR || "./storage";
-if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
+const baseDirRaw = process.env.STORAGE_DIR || "./storage";
+// Asegura ruta absoluta
+export const STORAGE_DIR = path.isAbsolute(baseDirRaw)
+  ? baseDirRaw
+  : path.resolve(process.cwd(), baseDirRaw);
+
+// Crea carpeta base si no existe
+if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
 
 /**
- * Genera una ruta única para guardar un archivo
- * Organiza los archivos en carpetas por año-mes
- * @param {string} nombreOriginal - Nombre del archivo a guardar
- * @returns {string} Ruta completa donde se guardará el archivo
+ * Genera una ruta ABSOLUTA para guardar el archivo preservando la extensión.
+ * - Carpeta por mes: YYYY-MM
+ * - Nombre: <timestamp>-<slug-del-nombre-sin-ext><ext>
  */
 export function rutaParaGuardar(nombreOriginal) {
   const fecha = new Date();
-  const carpeta = path.join(baseDir, `${fecha.getFullYear()}-${fecha.getMonth()+1}`);
-  if (!fs.existsSync(carpeta)) fs.mkdirSync(carpeta, { recursive: true });
-  const base = slugify(nombreOriginal, { lower: true, strict: true });
-  return path.join(carpeta, `${Date.now()}-${base}`);
+  const carpetaMes = path.join(STORAGE_DIR, `${fecha.getFullYear()}-${String(fecha.getMonth()+1).padStart(2, "0")}`);
+  if (!fs.existsSync(carpetaMes)) fs.mkdirSync(carpetaMes, { recursive: true });
+
+  const { name, ext } = path.parse(nombreOriginal);
+  const base = slugify(name, { lower: true, strict: true }); // sin puntos
+  const extLimpia = (ext || "").toLowerCase(); // mantiene .xlsx, .txt, .pdf, etc.
+
+  const filename = `${Date.now()}-${base}${extLimpia}`;
+  return path.join(carpetaMes, filename); // ABSOLUTO
 }

@@ -9,15 +9,33 @@ import pinoHttp from "pino-http";
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 const app = express();
 
+// Definir los orígenes permitidos
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',');
+
+// Configuración de CORS más específica
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permitir solicitudes sin origen (como las herramientas de desarrollo)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('No permitido por CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400 // 24 horas
+};
+
 // Middlewares de seguridad, CORS, parsing y logging
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
-app.use(cors({
-  origin: true,              
-  credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
 app.use(pinoHttp({ logger }));
 

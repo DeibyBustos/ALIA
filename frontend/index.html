@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>ALIA · Panel de Pruebas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#0f172a; --panel:#111827; --muted:#94a3b8; --fg:#e5e7eb; --accent:#22c55e; --accent2:#3b82f6; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; background:var(--bg); color:var(--fg); }
+    header { padding: 16px 24px; border-bottom:1px solid #1f2937; display:flex; gap:16px; align-items:center; }
+    header h1 { margin:0; font-size:18px; font-weight:600; }
+    main { padding: 20px; max-width: 1100px; margin: 0 auto; display: grid; gap: 16px; grid-template-columns: 1fr; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+    .card { background:var(--panel); border:1px solid #1f2937; border-radius:12px; padding:16px; box-shadow: 0 0 0 1px rgba(255,255,255,0.02) inset; }
+    .card h2 { margin:0 0 10px 0; font-size:16px; }
+    label { display:block; font-size:12px; color:var(--muted); margin-top:10px; margin-bottom:6px; }
+    input[type="text"], input[type="number"], input[type="file"], textarea, select {
+      width:100%; background:#0b1220; color:var(--fg); border:1px solid #263043; border-radius:8px; padding:10px; outline:none;
+    }
+    textarea { min-height: 120px; }
+    .row { display:flex; gap:10px; align-items:center; }
+    .row > * { flex:1; }
+    .btn { appearance:none; background: var(--accent2); color:white; border:none; border-radius:10px; padding:10px 14px; font-weight:600; cursor:pointer; }
+    .btn.secondary { background:#334155; }
+    .btn.success { background: var(--accent); }
+    .btn:disabled { opacity:.6; cursor:not-allowed; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .ok { color: #22c55e; }
+    .bad { color: #ef4444; }
+    table { width:100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding:8px 10px; border-bottom:1px solid #1f2937; vertical-align: top; }
+    th { text-align:left; color:var(--muted); font-weight:600; background:#0b1220; position:sticky; top:0; }
+    code, .code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; background:#0b1220; border:1px solid #1f2937; padding:2px 6px; border-radius:6px; }
+    .pill { display:inline-block; padding:2px 6px; border-radius:999px; font-size:11px; background:#0b1220; border:1px solid #1f2937; color:var(--muted); }
+    .stack { display:flex; flex-direction:column; gap:8px; }
+    .flex { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+    .right { margin-left:auto; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .pre { white-space: pre-wrap; word-break: break-word; background:#0b1220; border:1px solid #1f2937; border-radius:10px; padding:10px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ALIA · Panel de Pruebas (RAG)</h1>
+    <div class="row" style="max-width:520px; margin-left:auto;">
+      <input id="baseUrl" type="text" placeholder="URL del API Gateway" value="http://localhost:8080" />
+      <button class="btn secondary" id="btnGuardarBase">Usar URL</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <section class="card">
+        <h2>Estado de servicios</h2>
+        <div class="flex">
+          <button class="btn" id="btnEstado">Refrescar estado</button>
+          <span class="muted">Consulta <code>/estado</code> del gateway y muestra latencias.</span>
+        </div>
+        <div id="estadoOut" class="stack" style="margin-top:10px;"></div>
+      </section>
+
+      <section class="card">
+        <h2>Documentos (lista rápida)</h2>
+        <div class="flex">
+          <button class="btn secondary" id="btnListarDocs">Listar</button>
+          <span class="muted">GET <code>/documentos</code> (últimos 100)</span>
+        </div>
+        <div id="docsOut" style="max-height:260px; overflow:auto; margin-top:10px;">
+          <table id="docsTabla">
+            <thead><tr><th>ID</th><th>Título</th><th>Original</th><th>MIME</th><th>Tamaño</th><th>Creado</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Subir documento</h2>
+      <div class="row">
+        <div>
+          <label>Archivo</label>
+          <input id="file" type="file" />
+        </div>
+        <div>
+          <label>Título (opcional)</label>
+          <input id="titulo" type="text" placeholder="Mi documento" />
+        </div>
+      </div>
+      <label>Etiquetas (JSON opcional)</label>
+      <input id="etiquetas" type="text" placeholder='{"curso":"5A","tipo":"horario"}' />
+      <div class="flex" style="margin-top:10px;">
+        <button id="btnSubir" class="btn success">Subir</button>
+        <span class="muted">POST <code>/documentos</code> → crea tarea de ingesta.</span>
+      </div>
+      <div id="subidaOut" class="stack" style="margin-top:10px;"></div>
+    </section>
+
+    <section class="card">
+      <h2>Consulta RAG</h2>
+      <label>Pregunta</label>
+      <textarea id="pregunta" placeholder="¿Qué materias ve Juan Andrés de 5 de primaria?"></textarea>
+
+      <div class="row">
+        <div>
+          <label>k (Top-K)</label>
+          <input id="k" type="number" min="1" value="6" />
+        </div>
+        <div>
+          <label>Umbral (opcional)</label>
+          <input id="umbral" type="text" placeholder="0.15" />
+        </div>
+        <div class="row" style="align-items:center;">
+          <input id="usarLLM" type="checkbox" checked />
+          <label for="usarLLM" style="margin:0;">Usar LLM</label>
+        </div>
+      </div>
+
+      <details style="margin-top:10px;">
+        <summary class="muted">Filtros (opcionales)</summary>
+        <div class="row" style="margin-top:10px;">
+          <div>
+            <label>original_name contiene</label>
+            <input id="f_original" type="text" placeholder="horario" />
+          </div>
+          <div>
+            <label>Desde (YYYY-MM-DD)</label>
+            <input id="f_desde" type="text" placeholder="2025-01-01" />
+          </div>
+          <div>
+            <label>Hasta (YYYY-MM-DD)</label>
+            <input id="f_hasta" type="text" placeholder="2025-12-31" />
+          </div>
+        </div>
+      </details>
+
+      <div class="flex" style="margin-top:10px;">
+        <button id="btnConsultar" class="btn">Consultar</button>
+        <span class="muted">POST <code>/busqueda/consulta</code></span>
+      </div>
+
+      <div id="consultaOut" class="stack" style="margin-top:10px;"></div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const outEstado = $("estadoOut");
+    const outDocs   = $("docsTabla").querySelector("tbody");
+    const outSubida = $("subidaOut");
+    const outQuery  = $("consultaOut");
+
+    const storageKey = "alia_base_url";
+    $("baseUrl").value = localStorage.getItem(storageKey) || "http://localhost:8080";
+    $("btnGuardarBase").onclick = () => {
+      localStorage.setItem(storageKey, $("baseUrl").value.trim());
+      toast("URL actualizada");
+    };
+
+    function baseURL() {
+      return (localStorage.getItem(storageKey) || $("baseUrl").value || "").trim().replace(/\/+$/, "");
+    }
+
+    function toast(msg) {
+      const d = document.createElement("div");
+      d.textContent = msg;
+      d.className = "pill";
+      d.style.position="fixed"; d.style.bottom="16px"; d.style.right="16px"; d.style.zIndex="9999";
+      document.body.appendChild(d);
+      setTimeout(()=> d.remove(), 2000);
+    }
+
+    function fmtBytes(n){ if(n==null)return ""; const units=["B","KB","MB","GB"]; let i=0; let v=n; while(v>=1024 && i<units.length-1){ v/=1024; i++; } return v.toFixed(1)+" "+units[i]; }
+
+    // ---------------- Estado ----------------
+    $("btnEstado").onclick = async () => {
+      outEstado.innerHTML = "Consultando estado...";
+      try {
+        const r = await fetch(baseURL()+"/estado");
+        const j = await r.json();
+        const servicios = j.servicios || [];
+        outEstado.innerHTML = `
+          <div class="stack">
+            <div><span class="muted">Gateway:</span> <span class="${j.estado_gateway==='OK'?'ok':'bad'}">${j.estado_gateway || 'OK'}</span> · <span class="muted">uptime:</span> ${j.uptime_seg}s</div>
+            <div class="stack">
+              ${(servicios.length? servicios: []).map(s => `
+                <div>
+                  <span class="pill">${s.servicio || 'svc'}</span>
+                  <span class="${s.ok?'ok':'bad'}">${s.ok?'OK':'FALLA'}</span>
+                  <span class="muted">· ${s.latencia_ms ?? '-'} ms · ${s.codigo ?? ''}</span>
+                  ${s.error ? `<div class="muted">error: ${s.error}</div>` : ""}
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      } catch (e) {
+        outEstado.innerHTML = `<div class="bad">Error: ${e}</div>`;
+      }
+    };
+
+    // ---------------- Listar documentos ----------------
+    $("btnListarDocs").onclick = async () => {
+      outDocs.innerHTML = `<tr><td colspan="6" class="muted">Cargando...</td></tr>`;
+      try {
+        const r = await fetch(baseURL()+"/documentos");
+        const j = await r.json();
+        outDocs.innerHTML = j.map(d => `
+          <tr>
+            <td>${d.id}</td>
+            <td>${escapeHtml(d.titulo)}</td>
+            <td class="mono">${escapeHtml(d.nombre_original)}</td>
+            <td>${d.tipo_mime}</td>
+            <td>${fmtBytes(d.tamano_bytes)}</td>
+            <td><span class="muted mono">${d.creado_en}</span></td>
+          </tr>
+        `).join("") || `<tr><td colspan="6" class="muted">Sin documentos.</td></tr>`;
+      } catch (e) {
+        outDocs.innerHTML = `<tr><td colspan="6" class="bad">Error: ${e}</td></tr>`;
+      }
+    };
+
+    // ---------------- Subir documento ----------------
+    $("btnSubir").onclick = async () => {
+      const file = $("file").files[0];
+      if (!file) { toast("Selecciona un archivo"); return; }
+      const fd = new FormData();
+      fd.append("file", file);
+      const titulo = $("titulo").value.trim();
+      if (titulo) fd.append("titulo", titulo);
+      const et = $("etiquetas").value.trim();
+      if (et) fd.append("etiquetas", et);
+
+      $("btnSubir").disabled = true;
+      outSubida.innerHTML = `<div class="muted">Subiendo...</div>`;
+      try {
+        const r = await fetch(baseURL()+"/documentos", { method:"POST", body: fd });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j?.error || "Error al subir");
+        outSubida.innerHTML = `
+          <div class="ok">Subida OK</div>
+          <div class="pre">${escapeHtml(JSON.stringify(j, null, 2))}</div>
+          <div class="muted">Ahora el worker de ingesta tomará la tarea automáticamente.</div>
+        `;
+        $("btnListarDocs").click();
+      } catch (e) {
+        outSubida.innerHTML = `<div class="bad">Error: ${e?.message || e}</div>`;
+      } finally {
+        $("btnSubir").disabled = false;
+      }
+    };
+
+    // ---------------- Consulta RAG ----------------
+    $("btnConsultar").onclick = async () => {
+      const pregunta = $("pregunta").value.trim();
+      if (!pregunta) { toast("Escribe una pregunta"); return; }
+      const k = parseInt($("k").value || "6", 10);
+      const usarLLM = $("usarLLM").checked;
+      const umbralTxt = $("umbral").value.trim();
+      const umbral = umbralTxt ? Number(umbralTxt) : undefined;
+
+      const filtro = {};
+      const f1 = $("f_original").value.trim(); if (f1) filtro.original_name = f1;
+      const f2 = $("f_desde").value.trim(); if (f2) filtro.desde = f2;
+      const f3 = $("f_hasta").value.trim(); if (f3) filtro.hasta = f3;
+
+      outQuery.innerHTML = `<div class="muted">Consultando...</div>`;
+      try {
+        const body = { pregunta, k, usarLLM, filtro };
+        if (umbral !== undefined && !Number.isNaN(umbral)) body.umbral = umbral;
+
+        const r = await fetch(baseURL()+"/busqueda/consulta", {
+          method:"POST",
+          headers:{ "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j?.error || "Error en consulta");
+
+        if (usarLLM) {
+          outQuery.innerHTML = `
+            <div><strong>Respuesta</strong></div>
+            <div class="pre">${escapeHtml(j.respuesta || "(sin respuesta)")}</div>
+            <div><strong>Citas</strong></div>
+            <div class="pre">${escapeHtml(JSON.stringify(j.citas || [], null, 2))}</div>
+          `;
+        } else {
+          outQuery.innerHTML = `
+            <div><strong>Resultados (Top-K)</strong></div>
+            <div class="pre">${escapeHtml(JSON.stringify(j.resultados || [], null, 2))}</div>
+          `;
+        }
+      } catch (e) {
+        outQuery.innerHTML = `<div class="bad">Error: ${e?.message || e}</div>`;
+      }
+    };
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    // Acciones iniciales
+    $("btnEstado").click();
+    $("btnListarDocs").click();
+  </script>
+</body>
+</html>
