@@ -1,46 +1,44 @@
 import "dotenv/config";
 import express from "express";
+import helmet from "helmet";
+import cors from "cors";
 import pino from "pino";
 import pinoHttp from "pino-http";
-import { pool } from "../../libreria-compartida/src/db.js";
-import { logger } from "../../libreria-compartida/src/logger.js";
-import router from "./rutas.busqueda.js";
+import rutasBusqueda from "./rutas.busqueda.js";
 
+const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 const app = express();
-app.use(express.json({ limit: "1mb" }));
-app.use(pinoHttp({ logger: pino({ level: process.env.LOG_LEVEL || "info" }) }));
 
-app.get("/estado", async (_req, res) => {
-  const inicio = Date.now();
-  let bd = { ok: false };
-  try {
-    const c = await pool.getConnection();
-    await c.ping();
-    c.release();
-    bd.ok = true;
-  } catch (err) {
-    bd = { ok: false, error: String(err) };
-  }
-  res.json({
-    servicio: "svc-busqueda",
-    version: process.env.APP_VERSION || "1.0.0",
-    entorno: process.env.NODE_ENV || "desarrollo",
-    hora_servidor_iso: new Date().toISOString(),
-    uptime_seg: Math.round(process.uptime()),
-    latencia_ms: Date.now() - inicio,
-    base_datos: bd,
-    config: {
-      limite_candidatos: Number(process.env.RAG_CANDIDATOS || 1000),
-      k_por_defecto: Number(process.env.RAG_K || 6),
-      umbral_min: process.env.RAG_UMBRAL ? Number(process.env.RAG_UMBRAL) : null
-    }
-  });
+app.disable("x-powered-by");
+app.set("trust proxy", true);
+
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+app.use(cors({
+  origin: true,
+  credentials: false,
+  methods: ["GET","POST","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization"]
+}));
+app.use(pinoHttp({ logger }));
+
+app.get("/estado", (_req, res) => {
+  res.json({ ok: true, servicio: "svc-busqueda", version: "1.0.0", uptime: process.uptime() });
 });
 
-app.use("/busqueda", router);
+// 🔹 Montar el router UNA sola vez
+app.use("/", rutasBusqueda);
 
+// 404
 app.use((req, res) => {
   res.status(404).json({ error: "Ruta no encontrada en svc-busqueda", ruta: req.originalUrl });
+});
+
+// 🔹 Manejador de errores (incluye JSON inválido)
+app.use((err, _req, res, _next) => {
+  if (err?.type === "entity.parse.failed" || err instanceof SyntaxError) {
+    return res.status(400).json({ error: "JSON inválido" });
+  }
+  return res.status(500).json({ error: "Error interno" });
 });
 
 const port = process.env.PORT_SVC_BUSQUEDA || 8083;

@@ -9,44 +9,40 @@ import pinoHttp from "pino-http";
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 const app = express();
 
-// Definir los orígenes permitidos
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',');
+/** ===== CORS ===== */
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5173").split(",");
 
-// Configuración de CORS más específica
 const corsOptions = {
-  origin: function (origin, callback) {
-    // Permitir solicitudes sin origen (como las herramientas de desarrollo)
+  origin(origin, callback) {
+    // Permite herramientas sin origen (curl, Postman, file:// etc.)
     if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('No permitido por CORS'));
+    if (allowedOrigins.includes(origin) || process.env.NODE_ENV === "development") {
+      return callback(null, true);
     }
+    return callback(new Error("No permitido por CORS"));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  maxAge: 86400 // 24 horas
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  maxAge: 86400
 };
 
-// Middlewares de seguridad, CORS, parsing y logging
-
-app.use(helmet({
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
+/** ===== Middlewares globales (Opción B) =====
+ * Importante: NO parsear JSON antes de los proxies.
+ */
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors(corsOptions));
-app.use(express.json({ limit: "1mb" }));
+// ❌ No uses app.options("(.*)", ...) en Express 5 (rompe path-to-regexp).
+// El middleware de cors arriba ya maneja OPTIONS por defecto.
 app.use(pinoHttp({ logger }));
 
-// Función para crear un proxy con configuración común y manejo de errores
-
+/** ===== Proxy factory (sin reinyectar body) ===== */
 function buildProxy(target) {
   return createProxyMiddleware({
     target,
     changeOrigin: true,
-    proxyTimeout: 15_000,
-    timeout: 15_000,
+    proxyTimeout: 30_000,
+    timeout: 30_000,
     onError(err, req, res) {
       req.log?.error({ err }, "Error en proxy");
       if (!res.headersSent) {
@@ -56,9 +52,8 @@ function buildProxy(target) {
   });
 }
 
-// Determina si el servicio está activo y muestra las URLs de los servicios conectados
-
-app.get("/estado", (req, res) => {
+/** ===== Health ===== */
+app.get("/estado", (_req, res) => {
   res.json({
     ok: true,
     servicio: "api-gateway",
@@ -70,13 +65,22 @@ app.get("/estado", (req, res) => {
   });
 });
 
+/** ===== Rutas proxied (van ANTES de cualquier parser de body) ===== */
 app.use("/documentos", buildProxy(`http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`));
 app.use("/busqueda",  buildProxy(`http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`));
 
+/** (Opcional) Si algún día agregas rutas PROPIAS que reciben JSON,
+ *  monta el parser DESPUÉS de los proxies:
+ *
+ * app.use(express.json({ limit: "1mb" }));
+ * app.post("/algo-propio", (req,res)=>{ ... });
+ */
+
+/** ===== 404 ===== */
 app.use((req, res) => {
   res.status(404).json({ error: "Ruta no encontrada en el gateway", ruta: req.originalUrl });
 });
 
-
+/** ===== Start ===== */
 const port = process.env.PORT_API_GATEWAY || 8080;
 app.listen(port, () => logger.info({ port }, "api-gateway escuchando"));

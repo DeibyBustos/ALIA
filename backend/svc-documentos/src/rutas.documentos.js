@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { ejecutar, consultar } from "../../libreria-compartida/src/db.js";
-import { rutaParaGuardar } from "../../libreria-compartida/src/almacenamiento.js";
+import { calcularRutasParaGuardar } from "../../libreria-compartida/src/almacenamiento.js";
 import { logger } from "../../libreria-compartida/src/logger.js";
 
 const router = express.Router();
@@ -41,7 +41,7 @@ async function checksumArchivo(ruta) {
 
 /**
  * POST /documentos  (alias POST /)
- * Sube el archivo, lo mueve a storage, crea registro en `documentos`
+ * Sube el archivo, lo mueve a storage (FS), crea registro en `documentos` (ruta relativa)
  * y crea una `tareas_ingesta` en estado PENDIENTE.
  */
 async function postDocumentoHandler(req, res) {
@@ -49,14 +49,16 @@ async function postDocumentoHandler(req, res) {
     if (!req.file) return res.status(400).json({ error: "Archivo requerido (campo 'file')" });
 
     const { originalname, mimetype, path: tmpPath, size } = req.file;
-    const destino = rutaParaGuardar(originalname);
+
+    // Calcula rutas coherentes: rutaFS (para escribir) y rutaDB (para guardar en BD, relativa: storage/...)
+    const { rutaFS, rutaDB } = calcularRutasParaGuardar(originalname);
 
     // mover a storage
-    fs.mkdirSync(path.dirname(destino), { recursive: true });
-    fs.renameSync(tmpPath, destino);
+    fs.mkdirSync(path.dirname(rutaFS), { recursive: true });
+    fs.renameSync(tmpPath, rutaFS);
 
-    // checksum sha256
-    const checksum = await checksumArchivo(destino);
+    // checksum sha256 sobre el archivo en disco
+    const checksum = await checksumArchivo(rutaFS);
 
     const titulo = req.body.titulo?.trim() || originalname;
     const tipo_documento = deducirTipo(mimetype, originalname);
@@ -72,7 +74,7 @@ async function postDocumentoHandler(req, res) {
       `INSERT INTO documentos
        (titulo, tipo_documento, ruta_almacenamiento, nombre_original, tipo_mime, tamano_bytes, checksum_sha256, etiquetas, activo)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-      [titulo, tipo_documento, destino, originalname, mimetype, size, checksum, etiquetas]
+      [titulo, tipo_documento, rutaDB, originalname, mimetype, size, checksum, etiquetas]
     );
     const id_documento = r.insertId;
 
@@ -90,7 +92,8 @@ async function postDocumentoHandler(req, res) {
       tipo_mime: mimetype,
       tamano_bytes: size,
       tipo_documento,
-      checksum
+      checksum,
+      ruta_almacenamiento: rutaDB
     });
   } catch (err) {
     logger.error({ err }, "error subiendo documento");
