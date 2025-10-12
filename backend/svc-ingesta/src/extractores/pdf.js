@@ -1,12 +1,31 @@
-// backend/svc-ingesta/src/extractores/pdf.js
-import { readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
-const require = createRequire(import.meta.url);
-// Cargar pdf-parse (CJS) desde ESM:
-const pdfParse = require("pdf-parse");
+import fs from "node:fs/promises";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 export async function extraerPDF(ruta) {
-  const buf = await readFile(ruta);
-  const data = await pdfParse(buf);
-  return data.text || "";
+  try {
+    const data = await fs.readFile(ruta);
+    const arrayBuffer = new Uint8Array(data);
+    
+    const pdf = await pdfjsLib.getDocument({
+      data: arrayBuffer,
+      useSystemFonts: true,
+    }).promise;
+    
+    let textoCompleto = "";
+    
+    for (let numPagina = 1; numPagina <= pdf.numPages; numPagina++) {
+      const pagina = await pdf.getPage(numPagina);
+      const contenido = await pagina.getTextContent();
+      
+      const textoPagina = contenido.items
+        .map(item => item.str)
+        .join(" ");
+      
+      textoCompleto += textoPagina + "\n\n";
+    }
+    
+    return textoCompleto.trim();
+  } catch (error) {
+    throw new Error(`Error al extraer texto del PDF: ${error.message}`);
+  }
 }

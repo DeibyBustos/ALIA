@@ -18,7 +18,7 @@
     "mammoth": "^1.11.0",
     "mysql2": "^3.15.2",
     "openai": "^6.3.0",
-    "pdf-parse": "^2.2.9",
+    "pdfjs-dist": "^5.4.296",
     "pino": "^10.0.0",
     "pino-http": "^11.0.0",
     "uninstall": "^0.0.0"
