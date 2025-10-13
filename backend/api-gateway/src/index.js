@@ -10,7 +10,7 @@ const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 const app = express();
 
 /** ===== CORS ===== */
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5173").split(",");
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5174").split(",");
 
 const corsOptions = {
   origin(origin, callback) {
