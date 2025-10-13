@@ -26,7 +26,7 @@ async function traerCandidatos({ original_name, desde, hasta }) {
   const where = [];
   const params = [];
   
-  // ⚠️ CRÍTICO: Filtrar fragmentos muy cortos que no son útiles
+  // Filtrar fragmentos muy cortos que no son útiles
   where.push("LENGTH(f.contenido) >= 50");
   
   if (original_name) { 
@@ -92,7 +92,7 @@ router.post("/consulta", async (req, res) => {
       );
     }
 
-    // 🔍 DEBUG: Log de muestra de candidatos
+    // Log de muestra de candidatos
     if (candidatos.length > 0) {
       logger.debug({
         muestra: candidatos.slice(0, 2).map(c => ({
@@ -134,14 +134,14 @@ router.post("/consulta", async (req, res) => {
         
         try {
           if (c.embedding_json) {
-            // 🔧 FIX: Si embedding_json es string, parsear; si ya es objeto, usar directo
+            //Si embedding_json es string, parsear; si ya es objeto, usar directo
             if (typeof c.embedding_json === 'string') {
               embFrag = JSON.parse(c.embedding_json);
             } else {
               embFrag = c.embedding_json;
             }
             
-            // ✅ Validar que sea un array con datos
+            //Validar que sea un array con datos
             if (Array.isArray(embFrag) && embFrag.length > 0 && 
                 Array.isArray(embPregunta) && embPregunta.length > 0) {
               
@@ -175,7 +175,7 @@ router.post("/consulta", async (req, res) => {
         
         // Si no hay embedding válido, usar fallback por palabras para este fragmento
         if (score === 0 && c.texto) {
-          score = scorePorPalabras(c.texto, pregunta) * 0.3; // Penalizado
+          score = scorePorPalabras(c.texto, pregunta) * 0.3; 
         }
       } else {
         // Modo fallback total por palabras
@@ -205,7 +205,7 @@ router.post("/consulta", async (req, res) => {
     scored.sort((a, b) => b.score - a.score);
     let topk = scored.slice(0, Number(k) || 6);
     
-    // 🔍 Umbral adaptativo: si todos los scores son 0, usar los mejores por palabras
+    // Umbral adaptativo: si todos los scores son 0, usar los mejores por palabras
     if (topk.every(x => x.score === 0)) {
       logger.warn("Todos los scores son 0, aplicando fallback por palabras");
       const fallbackScored = candidatos.map(c => ({
@@ -225,7 +225,7 @@ router.post("/consulta", async (req, res) => {
       topk = topk.filter(x => x.score >= umbral);
     }
 
-    // 📊 Log de top resultados
+    // Log de top resultados
     logger.debug({
       topk: topk.map(r => ({
         score: r.score.toFixed(3),

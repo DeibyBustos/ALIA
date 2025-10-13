@@ -16,9 +16,9 @@ const BATCH = +process.env.INGESTA_BATCH || 5;
 const POLL_MS = +process.env.INGESTA_POLL_MS || 2000;
 const GUARDAR_TEXTO_COMPLETO = process.env.GUARDAR_TEXTO_COMPLETO !== "false";
 
-// 🆕 Configuración de reintentos
+//Configuración de reintentos
 const MAX_REINTENTOS = 3;
-const DELAY_ENTRE_EMBEDDINGS = 100; // ms entre llamadas a OpenAI
+const DELAY_ENTRE_EMBEDDINGS = 100; 
 
 /**
  * Intenta "reparar" rutas antiguas sin extensión probando variantes
@@ -96,7 +96,7 @@ async function extraerTexto(mime, rutaFS, nombre) {
 }
 
 /**
- * 🆕 Validar que el texto extraído sea útil
+ * Validar que el texto extraído sea útil
  */
 function validarTextoExtraido(texto, nombreArchivo) {
   if (!texto || typeof texto !== 'string') {
@@ -127,7 +127,7 @@ function validarTextoExtraido(texto, nombreArchivo) {
 }
 
 /**
- * 🆕 Generar embedding con reintentos
+ * Generar embedding con reintentos
  */
 async function generarEmbeddingConReintentos(texto, intentosRestantes = MAX_REINTENTOS) {
   try {
@@ -151,7 +151,7 @@ async function generarEmbeddingConReintentos(texto, intentosRestantes = MAX_REIN
 }
 
 /**
- * 🆕 Verificar si un documento ya tiene fragmentos válidos
+ * Verificar si un documento ya tiene fragmentos válidos
  */
 async function documentoTieneFragmentosValidos(idDocumento) {
   const resultado = await consultar(`
@@ -196,7 +196,7 @@ async function procesarTarea(t) {
       archivo: t.nombre_original 
     }, 'Iniciando procesamiento');
 
-    // 🆕 Verificar si ya tiene fragmentos válidos (evita reprocesar)
+    //Verificar si ya tiene fragmentos válidos (evita reprocesar)
     const yaExiste = await documentoTieneFragmentosValidos(t.id_documento);
     if (yaExiste) {
       await ejecutar(`UPDATE tareas_ingesta SET estado='TERMINADA', mensaje_error='Ya procesado' WHERE id=?`, [t.id]);
@@ -224,14 +224,14 @@ async function procesarTarea(t) {
       overlap: OVER
     }, 'Texto extraído, iniciando fragmentación');
 
-    // 🆕 Fragmentar con la función CORREGIDA
+    //Fragmentar texto
     const chunks = trocearTexto(texto, TAM, OVER);
 
     if (!chunks || chunks.length === 0) {
       throw new Error('La fragmentación no produjo ningún chunk válido');
     }
 
-    // 🆕 Validar que los chunks sean razonables
+    //Validar que los chunks sean razonables
     const chunksValidos = chunks.filter(c => c && c.trim().length >= 30);
     
     if (chunksValidos.length === 0) {
@@ -245,7 +245,7 @@ async function procesarTarea(t) {
       promedioLongitud: Math.round(chunksValidos.reduce((a, c) => a + c.length, 0) / chunksValidos.length)
     }, 'Fragmentación completada');
 
-    // 🆕 Eliminar fragmentos antiguos antes de insertar nuevos
+    //Eliminar fragmentos antiguos antes de insertar nuevos
     const eliminados = await ejecutar(
       `DELETE FROM fragmentos_documento WHERE id_documento = ?`,
       [t.id_documento]
@@ -265,7 +265,7 @@ async function procesarTarea(t) {
 
     for (const ch of chunksValidos) {
       try {
-        // 🆕 Generar embedding con reintentos
+        //Generar embedding con reintentos
         const emb = await generarEmbeddingConReintentos(ch);
         
         // Guardar en BD
@@ -308,7 +308,7 @@ async function procesarTarea(t) {
       idx++;
     }
 
-    // 🆕 Guardar texto completo en tabla separada
+    //Guardar texto completo en tabla separada
     if (GUARDAR_TEXTO_COMPLETO && texto && texto.length) {
       try {
         // Verificar si ya existe
@@ -395,7 +395,7 @@ async function ciclo() {
   }
 }
 
-// 🆕 Manejo de señales para cierre limpio
+//Manejo de señales para cierre limpio
 process.on('SIGTERM', () => {
   logger.info('SIGTERM recibido, cerrando worker...');
   process.exit(0);

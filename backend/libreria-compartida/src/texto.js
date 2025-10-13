@@ -1,12 +1,10 @@
-// libreria-compartida/src/texto.js
-
 export function normalizarEspacios(s) {
   return (s || "").replace(/\s+/g, " ").trim();
 }
 
 /**
  * Trocea texto en fragmentos con sobrelapamiento
- * CORREGIDO: Evita fragmentos muy cortos y bucles infinitos
+ * Evita fragmentos muy cortos y bucles infinitos
  */
 export function trocearTexto(texto, tam = 800, sobre = 120) {
   const limpio = normalizarEspacios(texto);
@@ -23,12 +21,12 @@ export function trocearTexto(texto, tam = 800, sobre = 120) {
 
   // Validar que sobre no sea >= tam
   if (sobre >= tam) {
-    sobre = Math.floor(tam * 0.15); // 15% del tamaño
+    sobre = Math.floor(tam * 0.15); 
   }
 
   const chunks = [];
   let i = 0;
-  const AVANCE_MINIMO = Math.floor(tam * 0.5); // Mínimo 50% del tamaño para avanzar
+  const AVANCE_MINIMO = Math.floor(tam * 0.5); 
 
   while (i < limpio.length) {
     const fin = Math.min(i + tam, limpio.length);
@@ -82,53 +80,3 @@ export function trocearTexto(texto, tam = 800, sobre = 120) {
 
   return chunks;
 }
-
-/**
- * FUNCIÓN DE PRUEBA: Verificar que la fragmentación funciona correctamente
- */
-export function testTrocearTexto() {
-  console.log('\n🧪 Ejecutando tests de trocearTexto...\n');
-
-  // Test 1: Texto corto
-  const test1 = trocearTexto('Texto muy corto.', 800, 120);
-  console.assert(test1.length === 1, '❌ Test 1 falló');
-  console.log('✅ Test 1: texto corto');
-
-  // Test 2: Texto largo con puntos
-  const test2Texto = 'Esta es una oración. ' + 'Esta es otra oración. '.repeat(100);
-  const test2 = trocearTexto(test2Texto, 400, 50);
-  console.assert(test2.length > 1, '❌ Test 2 falló: debe generar múltiples fragmentos');
-  console.assert(test2.every(c => c.length >= 30), '❌ Test 2 falló: fragmentos muy cortos');
-  console.assert(test2.every(c => c.length <= 500), '❌ Test 2 falló: fragmentos muy largos');
-  console.log(`✅ Test 2: ${test2.length} fragmentos (promedio: ${Math.round(test2.reduce((a,c) => a + c.length, 0) / test2.length)} chars)`);
-
-  // Test 3: Texto sin puntos ni espacios
-  const test3Texto = 'a'.repeat(2000);
-  const test3 = trocearTexto(test3Texto, 500, 50);
-  console.assert(test3.length >= 3, '❌ Test 3 falló: debe fragmentar texto largo sin puntos');
-  console.log(`✅ Test 3: ${test3.length} fragmentos de texto sin puntos`);
-
-  // Test 4: Verificar que no hay fragmentos duplicados exactos
-  const test4Texto = 'Línea 1. Línea 2. Línea 3. '.repeat(50);
-  const test4 = trocearTexto(test4Texto, 300, 50);
-  const unicos = new Set(test4);
-  console.assert(unicos.size === test4.length, '❌ Test 4 falló: hay fragmentos duplicados');
-  console.log(`✅ Test 4: ${test4.length} fragmentos únicos`);
-
-  // Test 5: Texto con formato Excel/CSV
-  const test5Texto = '[Hoja: Sheet1] Docente,Correo,Asignatura,Curso,Dia,HoraInicio,HoraFin,Aula Ana Torres,ana.torres@colegio.edu,Lengua,5A,Lunes,07:00,07:55,501 Carlos Ruiz,carlos.ruiz@colegio.edu,Matemáticas,5A,Jueves,10:00,10:55,501 '.repeat(10);
-  const test5 = trocearTexto(test5Texto, 600, 100);
-  console.log(`✅ Test 5: ${test5.length} fragmentos de datos tabulares`);
-  console.log(`   Longitudes: ${test5.map(c => c.length).join(', ')}`);
-
-  // Test 6: Estadísticas detalladas
-  console.log('\n📊 Estadísticas del Test 2:');
-  test2.slice(0, 3).forEach((c, i) => {
-    console.log(`   Fragmento ${i + 1}: ${c.length} chars - "${c.substring(0, 60)}..."`);
-  });
-
-  console.log('\n✨ Todos los tests completados\n');
-}
-
-// Descomentar para ejecutar tests:
- testTrocearTexto();
