@@ -19,11 +19,19 @@ function safeDecode(s) {
 
 function useBaseURL() {
   const envDefault = import.meta.env.VITE_API_BASE || "http://localhost:8080";
-  const [base, setBase] = useState(() => localStorage.getItem(STORAGE_KEY) || envDefault);
+  const [base, setBase] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) || envDefault;
+    } catch {
+      return envDefault;
+    }
+  });
   const save = (v) => {
     const cleaned = String(v || "").trim().replace(/\/+$/, "");
     setBase(cleaned);
-    localStorage.setItem(STORAGE_KEY, cleaned);
+    try {
+      localStorage.setItem(STORAGE_KEY, cleaned);
+    } catch {}
   };
   return { base, save };
 }
@@ -183,32 +191,85 @@ function Subida({ base }) {
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState("");
 
+  // Controles para etiquetar la importación
+  const [tipoCarga, setTipoCarga] = useState("");
+  const [periodoAnio, setPeriodoAnio] = useState(String(new Date().getFullYear()));
+  const [periodoNombre, setPeriodoNombre] = useState("ANUAL");
+
   const subir = async () => {
     const file = fileRef.current.files[0];
-    if (!file) { setOut(`<div class="bad">Selecciona un archivo</div>`); return; }
+    if (!file) { 
+      setOut(`<div class="bad">Selecciona un archivo</div>`); 
+      return; 
+    }
+
     const fd = new FormData();
     fd.append("file", file);
+
     const titulo = tituloRef.current.value.trim();
     if (titulo) fd.append("titulo", titulo);
+
+    // Construir etiquetas
     const et = etiquetasRef.current.value.trim();
-    if (et) fd.append("etiquetas", et);
+    let etiquetasJSON = null;
+
+    if (et) {
+      // Usuario escribió JSON manual
+      etiquetasJSON = et;
+      console.log("📤 Enviando etiquetas manuales:", et);
+    } else if (tipoCarga) {
+      // Construir automáticamente
+      const etiquetasAuto = {
+        import: tipoCarga,
+        periodo: { 
+          anio: Number(periodoAnio) || new Date().getFullYear(), 
+          nombre: periodoNombre || "ANUAL" 
+        }
+      };
+      etiquetasJSON = JSON.stringify(etiquetasAuto);
+      console.log("📤 Enviando etiquetas automáticas:", etiquetasJSON);
+    } else {
+      console.log("⚠️ No se enviaron etiquetas (tipoCarga vacío)");
+    }
+
+    if (etiquetasJSON) {
+      fd.append("etiquetas", etiquetasJSON);
+    }
 
     setBusy(true);
     setOut(`<div class="muted">Subiendo...</div>`);
+    
     try {
-      const r = await fetch(`${base}/documentos`, { method:"POST", body: fd });
+      console.log("🚀 Iniciando subida a:", `${base}/documentos`);
+      console.log("📦 FormData contiene:");
+      for (let [key, value] of fd.entries()) {
+        console.log(`  ${key}:`, value instanceof File ? `[File: ${value.name}]` : value);
+      }
+
+      const r = await fetch(`${base}/documentos`, { 
+        method: "POST", 
+        body: fd 
+      });
+      
       const j = await r.json();
+      console.log("📥 Respuesta del servidor:", j);
+      
       if (!r.ok) throw new Error(j?.error || "Error al subir");
+      
       setOut(`
-        <div class="ok">Subida OK</div>
+        <div class="ok">✅ Subida OK</div>
         <div class="pre">${escapeHtml(JSON.stringify(j, null, 2))}</div>
         <div class="muted">Ahora el worker de ingesta tomará la tarea automáticamente.</div>
+        ${etiquetasJSON ? `<div class="muted">Etiquetas enviadas: <code>${escapeHtml(etiquetasJSON)}</code></div>` : ''}
       `);
-      // limpia inputs
+      
+      // Limpiar inputs
       fileRef.current.value = "";
       tituloRef.current.value = "";
       etiquetasRef.current.value = "";
+      setTipoCarga("");
     } catch (e) {
+      console.error("❌ Error en subida:", e);
       setOut(`<div class="bad">Error: ${e?.message || e}</div>`);
     } finally {
       setBusy(false);
@@ -228,12 +289,63 @@ function Subida({ base }) {
           <input ref={tituloRef} type="text" placeholder="Mi documento" />
         </div>
       </div>
-      <label>Etiquetas (JSON opcional)</label>
-      <input ref={etiquetasRef} type="text" placeholder='{"curso":"5A","tipo":"horario"}' />
+
+      {/* Sección de etiquetado rápido */}
+      <div className="grid" style={{marginTop:10}}>
+        <div className="card">
+          <h3 style={{marginTop:0, fontSize:14}}>🎯 Tipo de carga</h3>
+          <label>¿Deseas que este archivo dispare una importación?</label>
+          <select value={tipoCarga} onChange={(e)=>setTipoCarga(e.target.value)}>
+            <option value="">Ninguno (solo RAG)</option>
+            <option value="estudiantes">Importar estudiantes</option>
+            <option value="docentes">Importar docentes</option>
+          </select>
+
+          {tipoCarga && (
+            <div className="row" style={{marginTop:10}}>
+              <div>
+                <label>Período · Año</label>
+                <input type="number" value={periodoAnio} onChange={e=>setPeriodoAnio(e.target.value)} />
+              </div>
+              <div>
+                <label>Período · Nombre</label>
+                <input type="text" value={periodoNombre} onChange={e=>setPeriodoNombre(e.target.value)} placeholder="ANUAL / P1 / P2 ..." />
+              </div>
+            </div>
+          )}
+
+          {tipoCarga && (
+            <div className="card" style={{marginTop:10, background:"#f0f9ff", border:"1px solid #0ea5e9"}}>
+              <p style={{margin:0, fontSize:13}}>
+                📋 Se enviará: <code style={{background:"white", padding:"2px 6px", borderRadius:4}}>
+                  {JSON.stringify({import: tipoCarga, periodo: {anio: Number(periodoAnio), nombre: periodoNombre}})}
+                </code>
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <h3 style={{marginTop:0, fontSize:14}}>⚙️ Etiquetas (JSON avanzado, opcional)</h3>
+          <label>Etiquetas JSON manual</label>
+          <input
+            ref={etiquetasRef}
+            type="text"
+            placeholder='{"import":"estudiantes","periodo":{"anio":2025,"nombre":"ANUAL"}}'
+          />
+          <p className="muted" style={{marginTop:8}}>
+            Si completas este campo, se ignorará la selección "Tipo de carga" y se usará este JSON.
+          </p>
+        </div>
+      </div>
+
       <div className="flex" style={{marginTop:10}}>
-        <button disabled={busy} className="btn success" onClick={subir}>Subir</button>
+        <button disabled={busy} className="btn success" onClick={subir}>
+          {busy ? "Subiendo..." : "Subir"}
+        </button>
         <span className="muted">POST <code>/documentos</code> → crea tarea de ingesta.</span>
       </div>
+
       <div id="subidaOut" className="stack" style={{marginTop:10}} dangerouslySetInnerHTML={{__html: out}} />
     </section>
   );

@@ -55,6 +55,13 @@ async function postDocumentoHandler(req, res) {
 
     const { originalname, mimetype, path: tmpPath, size } = req.file;
 
+    // DEBUG: Ver qué llega en req.body
+    logger.info({ 
+      body: req.body, 
+      etiquetas: req.body.etiquetas,
+      etiquetasType: typeof req.body.etiquetas 
+    }, "📦 Datos recibidos en POST /documentos");
+
     // Rutas coherentes (rutaFS absoluta para disco, rutaDB relativa para BD)
     const { rutaFS, rutaDB } = calcularRutasParaGuardar(originalname);
 
@@ -70,10 +77,39 @@ async function postDocumentoHandler(req, res) {
 
     // etiquetas: aceptar JSON o string crudo
     let etiquetas = null;
-    if (req.body.etiquetas) {
-      try { etiquetas = JSON.stringify(JSON.parse(req.body.etiquetas)); }
-      catch { etiquetas = JSON.stringify({ raw: String(req.body.etiquetas) }); }
+    const etiquetasRaw = req.body.etiquetas;
+    
+    if (etiquetasRaw) {
+      logger.info({ etiquetasRaw }, "🔍 Procesando etiquetas");
+      
+      // Si ya es string que parece JSON, parsearlo y re-stringify para validar
+      if (typeof etiquetasRaw === 'string') {
+        try { 
+          const parsed = JSON.parse(etiquetasRaw);
+          etiquetas = JSON.stringify(parsed);
+          logger.info({ parsed, etiquetas }, "✅ Etiquetas parseadas como JSON");
+        } catch (e) { 
+          // Si no es JSON válido, guardarlo como objeto con raw
+          etiquetas = JSON.stringify({ raw: String(etiquetasRaw) });
+          logger.warn({ etiquetasRaw, error: e.message }, "⚠️ Etiquetas no son JSON válido, guardando como raw");
+        }
+      } 
+      // Si es objeto, stringify directamente
+      else if (typeof etiquetasRaw === 'object') {
+        etiquetas = JSON.stringify(etiquetasRaw);
+        logger.info({ etiquetas }, "✅ Etiquetas guardadas como objeto");
+      }
+    } else {
+      logger.info("ℹ️ No se recibieron etiquetas");
     }
+
+    logger.info({ 
+      titulo, 
+      tipo_documento, 
+      rutaDB, 
+      etiquetas, 
+      etiquetasFinal: etiquetas 
+    }, "💾 Insertando documento en BD");
 
     const r = await ejecutar(
       `INSERT INTO documentos
@@ -82,6 +118,16 @@ async function postDocumentoHandler(req, res) {
       [titulo, tipo_documento, rutaDB, originalname, mimetype, size, checksum, etiquetas]
     );
     const id_documento = r.insertId;
+
+    // Verificar que se guardó
+    const [docGuardado] = await consultar(
+      `SELECT id, etiquetas FROM documentos WHERE id = ?`, 
+      [id_documento]
+    );
+    logger.info({ 
+      id_documento, 
+      etiquetasGuardadas: docGuardado?.etiquetas 
+    }, "✅ Documento insertado, verificando etiquetas");
 
     const t = await ejecutar(
       `INSERT INTO tareas_ingesta (id_documento, estado, mensaje_error)
@@ -98,22 +144,23 @@ async function postDocumentoHandler(req, res) {
       tamano_bytes: size,
       tipo_documento,
       checksum,
-      ruta_almacenamiento: rutaDB
+      ruta_almacenamiento: rutaDB,
+      etiquetas: etiquetas // Añadido para debug
     });
   } catch (err) {
-    logger.error({ err }, "error subiendo documento");
+    logger.error({ err, stack: err.stack }, "❌ Error subiendo documento");
     // limpieza tmp si algo falló antes de mover
     if (req.file?.path && fs.existsSync(req.file.path)) {
       try { fs.unlinkSync(req.file.path); } catch {}
     }
-    res.status(500).json({ error: "No se pudo subir el documento" });
+    res.status(500).json({ error: "No se pudo subir el documento", detalle: err.message });
   }
 }
 
 /** ===== GET /documentos (alias GET /) ===== */
 async function getDocumentosHandler(_req, res) {
   const filas = await consultar(
-    `SELECT id, titulo, nombre_original, tipo_mime, tamano_bytes, checksum_sha256, creado_en
+    `SELECT id, titulo, nombre_original, tipo_mime, tamano_bytes, checksum_sha256, etiquetas, creado_en
      FROM documentos
      ORDER BY id DESC
      LIMIT 100`
@@ -125,7 +172,7 @@ async function getDocumentosHandler(_req, res) {
 async function getDocumentoMeta(req, res) {
   const { id } = req.params;
   const [doc] = await consultar(
-    `SELECT id, titulo, tipo_documento, ruta_almacenamiento, nombre_original, tipo_mime, tamano_bytes, checksum_sha256, creado_en
+    `SELECT id, titulo, tipo_documento, ruta_almacenamiento, nombre_original, tipo_mime, tamano_bytes, checksum_sha256, etiquetas, creado_en
      FROM documentos WHERE id = ? LIMIT 1`, [id]
   );
   if (!doc) return res.status(404).json({ error: "Documento no encontrado" });

@@ -14,6 +14,12 @@ export const pool = mysql.createPool({
   charset: "utf8mb4"
 });
 
+
+export function getPool() {
+  return pool;
+}
+
+
 /**
  * Realiza consultas SELECT a la base de datos
  * @param {string} sql - Query SQL a ejecutar
@@ -37,6 +43,21 @@ export async function consultar(sql, params = []) {
 export async function ejecutar(sql, params = []) {
   const [res] = await pool.execute(sql, params);
   return res;
+}
+
+export async function tx(fn) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const out = await fn(conn);
+    await conn.commit();
+    return out;
+  } catch (e) {
+    try { await conn.rollback(); } catch {}
+    throw e;
+  } finally {
+    conn.release();
+  }
 }
 
 // Prueba inicial de conexión al pool
