@@ -5,10 +5,16 @@ import { embeddingTexto, responderConContexto } from "../../libreria-compartida/
 import { logger } from "../../libreria-compartida/src/logger.js";
 
 const router = express.Router();
-
 router.use(express.json({ limit: "2mb", type: ["application/json", "application/*+json"] }));
 
-/** Util: fallback sin embeddings (búsqueda por palabras) */
+// UTILIDADES
+
+/** Escape para LIKE SQL */
+function escapeLike(str) {
+  return str.replace(/[%_\\]/g, '\\$&');
+}
+
+/** Score por coincidencia de palabras */
 function scorePorPalabras(texto, consulta) {
   const q = String(consulta || "").toLowerCase().split(/\s+/).filter(Boolean);
   const t = String(texto || "").toLowerCase();
@@ -18,32 +24,133 @@ function scorePorPalabras(texto, consulta) {
   return s / q.length;
 }
 
+function extraerTerminosDocumento(pregunta) {
+  // Palabras comunes a ignorar (stop words)
+  const stopWords = new Set([
+    'que', 'cual', 'como', 'donde', 'cuando', 'quien', 'porque', 'para',
+    'este', 'esta', 'estos', 'estas', 'ese', 'esa', 'esos', 'esas',
+    'aquel', 'aquella', 'aquellos', 'aquellas', 'con', 'sin', 'sobre',
+    'bajo', 'entre', 'hasta', 'desde', 'por', 'según', 'tras',
+    'durante', 'mediante', 'contra', 'hacia', 'dentro', 'fuera',
+    'puede', 'debe', 'tiene', 'hacer', 'contiene', 'muestra', 'dice',
+    'archivo', 'documento', 'carpeta', 'folder', 'file'
+  ]);
+  
+  const palabras = pregunta
+    .toLowerCase()
+    .replace(/[^\wáéíóúñü\s-]/g, ' ') 
+    .split(/\s+/)
+    .filter(p => p.length > 2); 
+  
+  // Filtrar stop words pero mantener palabras importantes
+  const palabrasClave = palabras.filter(p => 
+    !stopWords.has(p) || p.length > 6 
+  );
+  
+  return [...new Set(palabrasClave)]; 
+}
+
+// ETAPA 1: FILTRAR DOCUMENTOS RELEVANTES
+
 /**
- * Trae candidatos desde fragmentos_documento + documentos
- * FILTRO MEJORADO: Solo trae fragmentos con contenido mínimo
+ * Busca documentos que coincidan con términos de la pregunta
+ * Retorna IDs de documentos ordenados por relevancia
  */
-async function traerCandidatos({ original_name, desde, hasta }) {
+async function buscarDocumentosRelevantes({ pregunta, filtro, maxDocs = 50 }) {
+  const terminos = extraerTerminosDocumento(pregunta);
   const where = [];
   const params = [];
   
-  // Filtrar fragmentos muy cortos que no son útiles
-  where.push("LENGTH(f.contenido) >= 50");
+  // Filtros base de usuario
+  if (filtro?.original_name) {
+    where.push("nombre_original LIKE ? ESCAPE '\\\\'");
+    params.push(`%${escapeLike(filtro.original_name)}%`);
+  }
+  if (filtro?.desde) {
+    where.push("creado_en >= ?");
+    params.push(filtro.desde);
+  }
+  if (filtro?.hasta) {
+    where.push("creado_en <= ?");
+    params.push(filtro.hasta);
+  }
   
-  if (original_name) { 
-    where.push("d.nombre_original LIKE ?"); 
-    params.push(`%${original_name}%`); 
+  // Si no hay términos, hacer búsqueda simple sin scoring
+  if (terminos.length === 0) {
+    const W = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const sql = `
+      SELECT 
+        id,
+        nombre_original,
+        creado_en,
+        0 as score_nombre
+      FROM documentos
+      ${W}
+      ORDER BY creado_en DESC
+      LIMIT ?
+    `;
+    params.push(maxDocs);
+    
+    const docs = await consultar(sql, params);
+    logger.info({
+      terminos_extraidos: 0,
+      documentos_encontrados: docs.length,
+      modo: "sin_filtro_terminos"
+    }, "Etapa 1: Documentos relevantes");
+    
+    return docs.map(d => d.id);
   }
-  if (desde) { 
-    where.push("d.creado_en >= ?"); 
-    params.push(desde); 
-  }
-  if (hasta) { 
-    where.push("d.creado_en <= ?"); 
-    params.push(hasta); 
-  }
+  
+  // Construir CASE statements para scoring (compatible con MySQL)
+  const scoreConditions = terminos.map(() => 
+    "(CASE WHEN nombre_original LIKE ? THEN 1 ELSE 0 END)"
+  ).join(" + ");
   
   const W = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  
+  const sql = `
+    SELECT 
+      id,
+      nombre_original,
+      creado_en,
+      (${scoreConditions}) as score_nombre
+    FROM documentos
+    ${W}
+    HAVING score_nombre > 0
+    ORDER BY score_nombre DESC, creado_en DESC
+    LIMIT ?
+  `;
+  
+  // Agregar términos como parámetros %término%
+  const terminosParams = terminos.map(t => `%${t}%`);
+  const allParams = [...params, ...terminosParams, maxDocs];
+  
+  const docs = await consultar(sql, allParams);
+  
+  logger.info({
+    terminos_extraidos: terminos.length,
+    documentos_encontrados: docs.length,
+    top3: docs.slice(0, 3).map(d => ({ 
+      nombre: d.nombre_original, 
+      score: d.score_nombre 
+    }))
+  }, "Etapa 1: Documentos relevantes");
+  
+  return docs.map(d => d.id);
+}
 
+
+// ETAPA 2: BUSCAR FRAGMENTOS EN DOCUMENTOS
+
+
+/**
+ * Trae fragmentos SOLO de documentos pre-filtrados
+ */
+async function traerFragmentosDeDocumentos(idsDocumentos, limite = 1000) {
+  if (!idsDocumentos.length) return [];
+  
+  const placeholders = idsDocumentos.map(() => '?').join(',');
+  
   const sql = `
     SELECT
       f.id                       AS id_fragmento,
@@ -55,230 +162,265 @@ async function traerCandidatos({ original_name, desde, hasta }) {
       d.creado_en                AS created_at
     FROM fragmentos_documento f
     JOIN documentos d ON d.id = f.id_documento
-    ${W}
-    ORDER BY f.id DESC
-    LIMIT 2000
+    WHERE 
+      d.id IN (${placeholders})
+      AND LENGTH(f.contenido) >= 50
+    ORDER BY d.id, f.indice_fragmento
+    LIMIT ?
   `;
-  return consultar(sql, params);
+  
+  return consultar(sql, [...idsDocumentos, limite]);
 }
+
+
+// SCORING DE FRAGMENTOS
+
+
+async function scorearFragmentos(candidatos, pregunta) {
+  let embPregunta = null;
+  let modoFallback = false;
+  
+  // Intentar obtener embedding de la pregunta
+  try {
+    embPregunta = await embeddingTexto(pregunta);
+    logger.info(`Embedding de pregunta obtenido (dim: ${embPregunta?.length})`);
+  } catch (err) {
+    modoFallback = true;
+    logger.warn({ err: String(err?.message) }, "Fallback a búsqueda por palabras");
+  }
+  
+  const scored = [];
+  let stats = {
+    con_embedding: 0,
+    sin_embedding: 0,
+    errores_parsing: 0
+  };
+  
+  for (const c of candidatos) {
+    let score = 0;
+    
+    if (!modoFallback && embPregunta) {
+      try {
+        let embFrag = null;
+        
+        if (c.embedding_json) {
+          embFrag = typeof c.embedding_json === 'string' 
+            ? JSON.parse(c.embedding_json) 
+            : c.embedding_json;
+          
+          if (Array.isArray(embFrag) && embFrag.length === embPregunta.length) {
+            score = similitudCoseno(embPregunta, embFrag);
+            stats.con_embedding++;
+          } else {
+            stats.sin_embedding++;
+          }
+        } else {
+          stats.sin_embedding++;
+        }
+      } catch (parseErr) {
+        stats.errores_parsing++;
+        logger.debug({ err: parseErr.message, id: c.id_fragmento }, "Error parsing embedding");
+      }
+      
+      // Fallback por palabras si no hay embedding
+      if (score === 0 && c.texto) {
+        score = scorePorPalabras(c.texto, pregunta) * 0.3;
+      }
+    } else {
+      // Modo fallback total
+      score = scorePorPalabras(c.texto, pregunta);
+    }
+    
+    scored.push({
+      id_fragmento: c.id_fragmento,
+      id_documento: c.id_documento,
+      original_name: c.original_name,
+      chunk_index: c.chunk_index,
+      score,
+      texto: c.texto
+    });
+  }
+  
+  logger.info({ ...stats, total: candidatos.length, modo: modoFallback ? 'palabras' : 'embeddings' }, 
+    "Stats scoring");
+  
+  return { scored, modoFallback, stats };
+}
+
+// ENDPOINT PRINCIPAL
 
 /**
  * POST /consulta
- * Body:
- * { pregunta, k=6, usarLLM=true, umbral, filtro:{ original_name, desde, hasta } }
+ * Body: { pregunta, k=6, usarLLM=true, umbral, filtro, maxDocs=50 }
  */
 router.post("/consulta", async (req, res) => {
   const t0 = Date.now();
+  
   try {
-    const { pregunta, k = 6, usarLLM = true, umbral, filtro = {} } = req.body || {};
-    if (!pregunta || typeof pregunta !== "string") {
-      return res.status(400).json({ error: "Campo 'pregunta' es requerido (string)" });
+    const { 
+      pregunta, 
+      k = 6, 
+      usarLLM = true, 
+      umbral = 0.1,  
+      filtro = {},
+      maxDocs = 50  
+    } = req.body || {};
+    
+    if (!pregunta || typeof pregunta !== "string" || pregunta.length < 3) {
+      return res.status(400).json({ 
+        error: "Campo 'pregunta' requerido (mínimo 3 caracteres)" 
+      });
     }
+    
+    logger.info({ pregunta: pregunta.substring(0, 100) }, "Nueva consulta");
+    
 
-    // 1) Traer candidatos desde la BD real
-    const candidatos = await traerCandidatos({
-      original_name: filtro.original_name,
-      desde: filtro.desde,
-      hasta: filtro.hasta
+    // ETAPA 1: Filtrar documentos relevantes
+
+    let idsDocumentos = await buscarDocumentosRelevantes({ 
+      pregunta, 
+      filtro, 
+      maxDocs 
     });
+    
+    // Fallback: Si no hay coincidencias por términos, traer documentos recientes
+    if (!idsDocumentos.length) {
+      logger.warn("No hay coincidencias por términos, usando documentos recientes");
+      
+      const where = [];
+      const params = [];
+      
+      if (filtro?.original_name) {
+        where.push("nombre_original LIKE ? ESCAPE '\\\\'");
+        params.push(`%${escapeLike(filtro.original_name)}%`);
+      }
+      if (filtro?.desde) {
+        where.push("creado_en >= ?");
+        params.push(filtro.desde);
+      }
+      if (filtro?.hasta) {
+        where.push("creado_en <= ?");
+        params.push(filtro.hasta);
+      }
+      
+      const W = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      
+      const fallbackDocs = await consultar(
+        `SELECT id FROM documentos ${W} ORDER BY creado_en DESC LIMIT ?`,
+        [...params, maxDocs]
+      );
+      
+      idsDocumentos = fallbackDocs.map(d => d.id);
+      
+      if (!idsDocumentos.length) {
+        logger.warn("No se encontraron documentos ni con fallback");
+        return res.json(
+          usarLLM 
+            ? { respuesta: "No encontré documentos relacionados con tu pregunta.", citas: [] }
+            : { resultados: [], mensaje: "No se encontraron documentos" }
+        );
+      }
+    }
+    
 
-    logger.info(`Candidatos encontrados: ${candidatos.length}`);
+    // ETAPA 2: Traer fragmentos de esos documentos
 
+    const candidatos = await traerFragmentosDeDocumentos(idsDocumentos);
+    
     if (!candidatos.length) {
+      logger.warn("Documentos encontrados pero sin fragmentos válidos");
       return res.json(
         usarLLM 
-          ? { respuesta: "(no hay contexto disponible)", citas: [] } 
+          ? { respuesta: "Encontré documentos pero no tienen contenido procesable.", citas: [] }
           : { resultados: [] }
       );
     }
-
-    // Log de muestra de candidatos
-    if (candidatos.length > 0) {
-      logger.debug({
-        muestra: candidatos.slice(0, 2).map(c => ({
-          id: c.id_fragmento,
-          texto_preview: c.texto?.substring(0, 100),
-          tiene_embedding: !!c.embedding_json,
-          tipo_embedding: typeof c.embedding_json,
-          longitud_texto: c.texto?.length
-        }))
-      }, "Muestra de candidatos");
-    }
-
-    // 2) Intentar embeddings de la pregunta
-    let embPregunta = null;
-    let modoFallback = false;
-
-    try {
-      embPregunta = await embeddingTexto(pregunta);
-      logger.info(`Embedding de pregunta obtenido (dim: ${embPregunta?.length})`);
-    } catch (err) {
-      modoFallback = true;
-      logger.warn({ 
-        err: String(err?.message || err) 
-      }, "Fallo en embeddings: usando fallback por palabras");
-    }
-
-    // 3) Scoring CON MEJOR MANEJO DE ERRORES
-    const scored = [];
-    let fragmentosConEmbedding = 0;
-    let fragmentosSinEmbedding = 0;
-    let erroresParsingEmbedding = 0;
-
-    for (const c of candidatos) {
-      let score = 0;
-      
-      if (!modoFallback) {
-        // Similitud coseno con embeddings guardados
-        let embFrag = null;
-        
-        try {
-          if (c.embedding_json) {
-            //Si embedding_json es string, parsear; si ya es objeto, usar directo
-            if (typeof c.embedding_json === 'string') {
-              embFrag = JSON.parse(c.embedding_json);
-            } else {
-              embFrag = c.embedding_json;
-            }
-            
-            //Validar que sea un array con datos
-            if (Array.isArray(embFrag) && embFrag.length > 0 && 
-                Array.isArray(embPregunta) && embPregunta.length > 0) {
-              
-              // ⚠️ Validar dimensiones compatibles
-              if (embFrag.length === embPregunta.length) {
-                score = similitudCoseno(embPregunta, embFrag);
-                fragmentosConEmbedding++;
-              } else {
-                logger.warn({
-                  id_fragmento: c.id_fragmento,
-                  dim_frag: embFrag.length,
-                  dim_pregunta: embPregunta.length
-                }, "Dimensiones de embedding incompatibles");
-                fragmentosSinEmbedding++;
-              }
-            } else {
-              fragmentosSinEmbedding++;
-            }
-          } else {
-            fragmentosSinEmbedding++;
-          }
-        } catch (parseErr) {
-          erroresParsingEmbedding++;
-          logger.warn({
-            err: String(parseErr.message),
-            id_fragmento: c.id_fragmento,
-            tiene_embedding: !!c.embedding_json,
-            tipo_embedding: typeof c.embedding_json
-          }, "Error al parsear embedding_json");
-        }
-        
-        // Si no hay embedding válido, usar fallback por palabras para este fragmento
-        if (score === 0 && c.texto) {
-          score = scorePorPalabras(c.texto, pregunta) * 0.3; 
-        }
-      } else {
-        // Modo fallback total por palabras
-        score = scorePorPalabras(c.texto, pregunta);
-      }
-
-      scored.push({
-        id_fragmento: c.id_fragmento,
-        id_documento: c.id_documento,
-        original_name: c.original_name,
-        chunk_index: c.chunk_index,
-        score,
-        texto: c.texto
-      });
-    }
-
-    // 📊 Log de estadísticas
-    logger.info({
-      total: candidatos.length,
-      con_embedding: fragmentosConEmbedding,
-      sin_embedding: fragmentosSinEmbedding,
-      errores_parsing: erroresParsingEmbedding,
-      modo: modoFallback ? "fallback_palabras" : "embeddings"
-    }, "Estadísticas de scoring");
-
-    // 4) Orden, top-k y umbral
+    
+    logger.info(`Analizando ${candidatos.length} fragmentos de ${idsDocumentos.length} documentos`);
+    
+ 
+    // ETAPA 3: Scorear fragmentos
+  
+    const { scored, modoFallback, stats } = await scorearFragmentos(candidatos, pregunta);
+    
+    // Ordenar y aplicar top-k
     scored.sort((a, b) => b.score - a.score);
     let topk = scored.slice(0, Number(k) || 6);
     
-    // Umbral adaptativo: si todos los scores son 0, usar los mejores por palabras
-    if (topk.every(x => x.score === 0)) {
-      logger.warn("Todos los scores son 0, aplicando fallback por palabras");
-      const fallbackScored = candidatos.map(c => ({
-        id_fragmento: c.id_fragmento,
-        id_documento: c.id_documento,
-        original_name: c.original_name,
-        chunk_index: c.chunk_index,
-        score: scorePorPalabras(c.texto, pregunta),
-        texto: c.texto
-      }));
-      fallbackScored.sort((a, b) => b.score - a.score);
-      topk = fallbackScored.slice(0, Number(k) || 6);
-      modoFallback = true;
-    }
-    
+    // Aplicar umbral
     if (typeof umbral === "number") {
       topk = topk.filter(x => x.score >= umbral);
     }
-
-    // Log de top resultados
+    
+    // Fallback si todos los scores son muy bajos
+    if (topk.length === 0 || topk.every(x => x.score < 0.05)) {
+      logger.warn("Scores muy bajos, ampliando búsqueda");
+      topk = scored.slice(0, Number(k) || 6); 
+    }
+    
     logger.debug({
-      topk: topk.map(r => ({
+      topk: topk.slice(0, 3).map(r => ({
+        doc: r.original_name,
         score: r.score.toFixed(3),
-        preview: r.texto?.substring(0, 80)
+        preview: r.texto?.substring(0, 60)
       }))
-    }, "Top K resultados");
+    }, "Top resultados");
+    
 
-    // 5) Si no usamos LLM → devolver recuperación
+    // Respuesta sin LLM
+
     if (!usarLLM) {
       return res.json({ 
-        resultados: topk, 
-        modo: modoFallback ? "fallback_palabras" : "embeddings",
+        resultados: topk.map(r => ({
+          documento: r.original_name,
+          score: r.score,
+          fragmento: r.texto?.substring(0, 200) + '...'
+        })),
+        modo: modoFallback ? "palabras" : "embeddings",
         stats: {
-          total_candidatos: candidatos.length,
-          con_embedding: fragmentosConEmbedding,
-          sin_embedding: fragmentosSinEmbedding
+          documentos_analizados: idsDocumentos.length,
+          fragmentos_totales: candidatos.length,
+          ...stats
         }
       });
     }
-
-    // 6) Preparar contexto para LLM
-    const contexto = topk
-      .map((r, i) => `<<fragmento ${i+1} (score=${r.score.toFixed(3)})>>\n${r.texto}`)
-      .join("\n\n");
     
-    logger.debug({ contexto_length: contexto.length }, "Contexto preparado");
-
+    // ========================================
+    // Respuesta con LLM
+    // ========================================
+    const contexto = topk
+      .map((r, i) => {
+        return `<<Fragmento ${i+1} - Documento: "${r.original_name}" (relevancia: ${r.score.toFixed(2)})>>\n${r.texto}`;
+      })
+      .join("\n\n---\n\n");
+    
     const { respuesta } = await responderConContexto(pregunta, contexto);
-
+    
     const citas = topk.map(r => ({
       id_fragmento: r.id_fragmento,
       id_documento: r.id_documento,
-      original_name: r.original_name,
+      documento: r.original_name,
       chunk_index: r.chunk_index,
       score: r.score
     }));
-
+    
     return res.json({ 
       respuesta, 
-      citas, 
-      modo: modoFallback ? "fallback_palabras" : "embeddings", 
+      citas,
+      modo: modoFallback ? "palabras" : "embeddings",
       ms: Date.now() - t0,
       stats: {
-        total_candidatos: candidatos.length,
-        con_embedding: fragmentosConEmbedding,
-        sin_embedding: fragmentosSinEmbedding
+        documentos_analizados: idsDocumentos.length,
+        fragmentos_totales: candidatos.length,
+        ...stats
       }
     });
     
   } catch (err) {
-    logger.error({ err }, "Error en /consulta");
-    return res.status(500).json({ error: "Error en búsqueda/consulta" });
+    logger.error({ err: err.message, stack: err.stack }, "Error en /consulta");
+    return res.status(500).json({ error: "Error en búsqueda" });
   }
 });
+
 
 export default router;
