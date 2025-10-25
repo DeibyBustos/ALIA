@@ -249,10 +249,6 @@ async function scorearFragmentos(candidatos, pregunta) {
 
 // ENDPOINT PRINCIPAL
 
-/**
- * POST /consulta
- * Body: { pregunta, k=6, usarLLM=true, umbral, filtro, maxDocs=50 }
- */
 router.post("/consulta", async (req, res) => {
   const t0 = Date.now();
   
@@ -384,17 +380,30 @@ router.post("/consulta", async (req, res) => {
         }
       });
     }
-    
-    // ========================================
-    // Respuesta con LLM
-    // ========================================
+    // ETAPA 4: Usar LLM para responder con contexto
     const contexto = topk
       .map((r, i) => {
         return `<<Fragmento ${i+1} - Documento: "${r.original_name}" (relevancia: ${r.score.toFixed(2)})>>\n${r.texto}`;
       })
       .join("\n\n---\n\n");
     
-    const { respuesta } = await responderConContexto(pregunta, contexto);
+  
+    const preguntaDetallada = `${pregunta}
+
+INSTRUCCIONES PARA LA RESPUESTA:
+- Proporciona una respuesta COMPLETA y EXHAUSTIVA (mínimo 3-4 párrafos bien desarrollados)
+- Incluye TODOS los detalles relevantes encontrados en los fragmentos proporcionados
+- Explica el contexto, antecedentes y cualquier información necesaria para una comprensión completa
+- Si hay múltiples aspectos o partes en la pregunta, aborda CADA UNO de manera detallada
+- Usa ejemplos específicos, datos concretos y referencias textuales cuando estén disponibles
+- Estructura tu respuesta de manera clara con párrafos bien organizados
+- Sintetiza información de TODOS los fragmentos relevantes, no solo de uno o dos
+- NO proporciones respuestas cortas, superficiales o incompletas
+- Si encuentras información complementaria o relacionada, inclúyela para enriquecer la respuesta
+
+Recuerda: el objetivo es dar la respuesta MÁS COMPLETA Y ÚTIL posible basándote en la información disponible.`;
+    
+    const { respuesta } = await responderConContexto(preguntaDetallada, contexto);
     
     const citas = topk.map(r => ({
       id_fragmento: r.id_fragmento,

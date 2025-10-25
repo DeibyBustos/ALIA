@@ -127,6 +127,90 @@ async function obtenerEtiquetasDoc(idDoc) {
   return null;
 }
 
+/**
+ * Genera fragmentos RAG para búsqueda semántica
+ * Se usa tanto para documentos normales como para archivos de importación
+ */
+async function generarFragmentosRAG(rutaFS, idDocumento, nombreArchivo) {
+  logger.info({ idDocumento, archivo: nombreArchivo }, "📚 Generando fragmentos RAG");
+  
+  try {
+    // Extraer texto del archivo
+    const textoRaw = await extraerExcelComoTexto(rutaFS);
+    const texto = validarTextoExtraido(textoRaw, nombreArchivo);
+    
+    // Fragmentar texto
+    const chunks = trocearTexto(texto, TAM, OVER);
+    if (!chunks || chunks.length === 0) {
+      logger.warn({ idDocumento }, "No se generaron chunks");
+      return { procesados: 0, fallidos: 0 };
+    }
+    
+    const chunksValidos = chunks.filter(c => c && c.trim().length >= 30);
+    if (chunksValidos.length === 0) {
+      logger.warn({ idDocumento }, "No hay chunks válidos");
+      return { procesados: 0, fallidos: 0 };
+    }
+    
+    logger.info({ idDocumento, totalChunks: chunksValidos.length }, "Fragmentación completada");
+    
+    // Limpiar fragmentos anteriores
+    await ejecutar(`DELETE FROM fragmentos_documento WHERE id_documento = ?`, [idDocumento]);
+    
+    // Generar embeddings y guardar
+    let idx = 0, procesados = 0, fallidosEmbedding = 0;
+    for (const ch of chunksValidos) {
+      try {
+        const emb = await generarEmbeddingConReintentos(ch);
+        await ejecutar(
+          `INSERT INTO fragmentos_documento (id_documento, indice_fragmento, contenido, embedding_json, total_tokens)
+           VALUES (?, ?, ?, ?, NULL)`,
+          [idDocumento, idx, ch, JSON.stringify(emb)]
+        );
+        procesados++;
+        if (idx < chunksValidos.length - 1) {
+          await new Promise(r => setTimeout(r, DELAY_ENTRE_EMBEDDINGS));
+        }
+      } catch (err) {
+        fallidosEmbedding++;
+        logger.warn({ err: err.message, fragmento: idx }, "Error generando embedding para fragmento");
+        
+        // Si hay demasiados fallos, abortar
+        if (fallidosEmbedding > chunksValidos.length * 0.5) {
+          throw new Error(`Demasiados errores de embedding: ${fallidosEmbedding}/${chunksValidos.length}`);
+        }
+      }
+      idx++;
+    }
+    
+    // Guardar texto completo si está habilitado
+    if (GUARDAR_TEXTO_COMPLETO && texto && texto.length) {
+      try {
+        const existente = await consultar(`SELECT id FROM textos_documento WHERE id_documento = ?`, [idDocumento]);
+        if (existente.length > 0) {
+          await ejecutar(
+            `UPDATE textos_documento SET texto_completo = ? WHERE id_documento = ?`, 
+            [texto.slice(0, 5_000_000), idDocumento]
+          );
+        } else {
+          await ejecutar(
+            `INSERT INTO textos_documento (id_documento, texto_completo) VALUES (?, ?)`, 
+            [idDocumento, texto.slice(0, 5_000_000)]
+          );
+        }
+      } catch (err) {
+        logger.warn({ err: err.message }, "Error guardando texto completo (no crítico)");
+      }
+    }
+    
+    return { procesados, fallidos: fallidosEmbedding };
+    
+  } catch (err) {
+    logger.error({ err: err.message, idDocumento }, "Error generando fragmentos RAG");
+    throw err;
+  }
+}
+
 async function procesarTarea(t) {
   await ejecutar(`UPDATE tareas_ingesta SET estado='EN_PROCESO', mensaje_error=NULL WHERE id=?`, [t.id]);
 
@@ -154,11 +238,14 @@ async function procesarTarea(t) {
       condicionDocentes: (esExcel && (purpose === "importar_docentes" || imp === "docentes"))
     }, "🔍 ANÁLISIS DE CONDICIONES");
 
+    // ==========================================
     // IMPORTAR ESTUDIANTES
+    // ==========================================
     if (esExcel && (purpose === "importar_estudiantes" || imp === "estudiantes")) {
       logger.info({ tarea: t.id, doc: t.id_documento }, "🎓 ➡️ EJECUTANDO IMPORTADOR DE ESTUDIANTES");
       
       try {
+        // 1. Primero ejecutar la importación estructurada a la BD
         await importarEstudiantesDesdeExcel({
           rutaFS,
           idDocumento: t.id_documento,
@@ -166,22 +253,38 @@ async function procesarTarea(t) {
           periodo: etiquetas?.periodo || null
         });
         
-        await ejecutar(`UPDATE tareas_ingesta SET estado='TERMINADA', mensaje_error=NULL WHERE id=?`, [t.id]);
-        
         const [countResult] = await consultar(`SELECT COUNT(*) as total FROM estudiantes`);
-        logger.info({ tarea: t.id, totalEstudiantes: countResult.total }, "✅ Importación de estudiantes finalizada");
+        logger.info({ tarea: t.id, totalEstudiantes: countResult.total }, "✅ Importación estructurada de estudiantes completada");
+
+        // 2. Ahora generar fragmentos RAG para que sea buscable
+        logger.info({ tarea: t.id, doc: t.id_documento }, "📚 Generando fragmentos RAG del archivo de estudiantes");
+        
+        const { procesados, fallidos } = await generarFragmentosRAG(rutaFS, t.id_documento, t.nombre_original);
+        
+        logger.info({ 
+          tarea: t.id, 
+          fragmentosGenerados: procesados, 
+          fragmentosFallidos: fallidos 
+        }, "✅ Fragmentos RAG generados para archivo de estudiantes");
+        
+        await ejecutar(`UPDATE tareas_ingesta SET estado='TERMINADA', mensaje_error=NULL WHERE id=?`, [t.id]);
+        logger.info({ tarea: t.id }, "✅✅ Importación de estudiantes COMPLETADA (datos + fragmentos)");
         return;
+        
       } catch (importError) {
         logger.error({ error: importError.message, stack: importError.stack, tarea: t.id }, "❌ ERROR EN IMPORTADOR DE ESTUDIANTES");
         throw importError;
       }
     }
 
+    // ==========================================
     // IMPORTAR DOCENTES
+    // ==========================================
     if (esExcel && (purpose === "importar_docentes" || imp === "docentes")) {
       logger.info({ tarea: t.id, doc: t.id_documento }, "👨‍🏫 ➡️ EJECUTANDO IMPORTADOR DE DOCENTES");
       
       try {
+        // 1. Primero ejecutar la importación estructurada a la BD
         await importarDocentesDesdeExcel({
           rutaFS,
           idDocumento: t.id_documento,
@@ -189,19 +292,34 @@ async function procesarTarea(t) {
           periodo: etiquetas?.periodo || null
         });
         
-        await ejecutar(`UPDATE tareas_ingesta SET estado='TERMINADA', mensaje_error=NULL WHERE id=?`, [t.id]);
-        
         const [countResult] = await consultar(`SELECT COUNT(*) as total FROM docentes`);
-        logger.info({ tarea: t.id, totalDocentes: countResult.total }, "✅ Importación de docentes finalizada");
+        logger.info({ tarea: t.id, totalDocentes: countResult.total }, "✅ Importación estructurada de docentes completada");
+
+        // 2. Ahora generar fragmentos RAG para que sea buscable
+        logger.info({ tarea: t.id, doc: t.id_documento }, "📚 Generando fragmentos RAG del archivo de docentes");
+        
+        const { procesados, fallidos } = await generarFragmentosRAG(rutaFS, t.id_documento, t.nombre_original);
+        
+        logger.info({ 
+          tarea: t.id, 
+          fragmentosGenerados: procesados, 
+          fragmentosFallidos: fallidos 
+        }, "✅ Fragmentos RAG generados para archivo de docentes");
+        
+        await ejecutar(`UPDATE tareas_ingesta SET estado='TERMINADA', mensaje_error=NULL WHERE id=?`, [t.id]);
+        logger.info({ tarea: t.id }, "✅✅ Importación de docentes COMPLETADA (datos + fragmentos)");
         return;
+        
       } catch (importError) {
         logger.error({ error: importError.message, stack: importError.stack, tarea: t.id }, "❌ ERROR EN IMPORTADOR DE DOCENTES");
         throw importError;
       }
     }
 
+    // ==========================================
     // FLUJO RAG (documentos normales)
-    logger.info({ tarea: t.id }, "📚 No es importación, continuando con flujo RAG");
+    // ==========================================
+    logger.info({ tarea: t.id }, "📚 No es importación, continuando con flujo RAG estándar");
 
     const yaExiste = await documentoTieneFragmentosValidos(t.id_documento);
     if (yaExiste) {

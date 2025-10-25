@@ -60,18 +60,18 @@ app.get("/estado", (_req, res) => {
     servicios: {
       documentos: `http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`,
       busqueda:   `http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`,
-      ingesta:    `http://localhost:${process.env.PORT_SVC_INGESTA   || 8082}`
+      ingesta:    `http://localhost:${process.env.PORT_SVC_INGESTA   || 8082}`,
+      generacion: `http://localhost:${process.env.PORT_SVC_GENERACION || 8084}`
     }
   });
 });
 
-/** ===== Rutas proxied (van ANTES de cualquier parser de body) ===== */
+/** ===== Rutas proxied ===== */
 app.use("/documentos", buildProxy(`http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`));
 app.use("/busqueda",  buildProxy(`http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`));
+app.use("/generacion", buildProxy(`http://localhost:${process.env.PORT_SVC_GENERACION || 8084}`));
 
-/** (Opcional) Si algún día agregas rutas PROPIAS que reciben JSON,
- *  monta el parser DESPUÉS de los proxies:
- *
+/** 
  * app.use(express.json({ limit: "1mb" }));
  * app.post("/algo-propio", (req,res)=>{ ... });
  */
