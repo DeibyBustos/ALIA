@@ -21,7 +21,10 @@ export class ContextoManager {
     `, [this.idConversacion]);
 
     if (conversacion && conversacion.contexto_inicial) {
-      this.contexto = JSON.parse(conversacion.contexto_inicial) || {};
+      // MySQL driver ya parsea columnas JSON automáticamente
+      this.contexto = typeof conversacion.contexto_inicial === 'string'
+        ? JSON.parse(conversacion.contexto_inicial)
+        : conversacion.contexto_inicial || {};
     }
   }
 

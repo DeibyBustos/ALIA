@@ -1,5 +1,125 @@
 import ExcelJS from 'exceljs';
 import { consultar } from '../../../libreria-compartida/src/db.js';
+import { logger } from '../../../libreria-compartida/src/logger.js';
+
+/**
+ * Genera un Excel con la lista de estudiantes de un grado
+ */
+export async function generarExcelEstudiantes(grado, periodoId) {
+  logger.info({ grado, periodoId }, '📊 Generando Excel de estudiantes');
+
+  // Obtener estudiantes del grado
+  const estudiantes = await consultar(`
+    SELECT
+      e.id,
+      e.nombres,
+      e.apellidos,
+      e.documento,
+      e.fecha_nacimiento,
+      g.etiqueta as grado,
+      CONCAT(a.nombres, ' ', a.apellidos) as acudiente
+    FROM estudiantes e
+    JOIN matriculas m ON m.estudiante_id = e.id
+    JOIN grados g ON g.id = m.grado_id
+    LEFT JOIN estudiante_acudiente ea ON ea.estudiante_id = e.id
+    LEFT JOIN acudientes a ON a.id = ea.acudiente_id
+    WHERE g.etiqueta = ? AND m.periodo_id = ?
+    ORDER BY e.apellidos, e.nombres
+  `, [grado, periodoId]);
+
+  if (estudiantes.length === 0) {
+    throw new Error(`No se encontraron estudiantes en el grado ${grado} para el período ${periodoId}`);
+  }
+
+  // Crear workbook
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('Estudiantes');
+
+  workbook.creator = 'ALIA - Sistema Académico';
+  workbook.created = new Date();
+
+  // Título
+  sheet.mergeCells('A1:F1');
+  const titleCell = sheet.getCell('A1');
+  titleCell.value = `LISTA DE ESTUDIANTES - ${grado}`;
+  titleCell.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+  titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  titleCell.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF4472C4' }
+  };
+  sheet.getRow(1).height = 25;
+
+  // Información
+  sheet.getCell('A2').value = `Período: ${periodoId}`;
+  sheet.getCell('A3').value = `Total estudiantes: ${estudiantes.length}`;
+  sheet.getCell('A4').value = `Fecha: ${new Date().toLocaleDateString('es-CO')}`;
+
+  // Encabezados
+  const headerRow = sheet.getRow(6);
+  headerRow.values = ['#', 'Apellidos', 'Nombres', 'Documento', 'Fecha Nacimiento', 'Acudiente'];
+  headerRow.font = { bold: true };
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFD9E1F2' }
+  };
+  headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
+  headerRow.height = 20;
+
+  // Datos de estudiantes
+  estudiantes.forEach((est, index) => {
+    const row = sheet.getRow(7 + index);
+    row.values = [
+      index + 1,
+      est.apellidos,
+      est.nombres,
+      est.documento || 'N/A',
+      est.fecha_nacimiento ? new Date(est.fecha_nacimiento).toLocaleDateString('es-CO') : 'N/A',
+      est.acudiente || 'N/A'
+    ];
+
+    // Alternar colores de filas
+    if (index % 2 === 0) {
+      row.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF2F2F2' }
+        };
+      });
+    }
+  });
+
+  // Ajustar anchos de columna
+  sheet.getColumn(1).width = 5;
+  sheet.getColumn(2).width = 20;
+  sheet.getColumn(3).width = 20;
+  sheet.getColumn(4).width = 18;
+  sheet.getColumn(5).width = 18;
+  sheet.getColumn(6).width = 25;
+
+  // Bordes
+  const lastRow = 6 + estudiantes.length;
+  for (let i = 6; i <= lastRow; i++) {
+    for (let j = 1; j <= 6; j++) {
+      const cell = sheet.getCell(i, j);
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    }
+  }
+
+  // Generar buffer
+  const buffer = await workbook.xlsx.writeBuffer();
+  logger.info('✅ Excel de estudiantes generado exitosamente');
+
+  return buffer;
+}
 
 /**
  * Genera un Excel con las calificaciones de un curso

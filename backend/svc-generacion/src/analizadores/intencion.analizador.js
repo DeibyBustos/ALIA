@@ -8,6 +8,7 @@ export async function analizarIntencion(mensaje) {
   const prompt = `Eres un asistente académico. Analiza el siguiente mensaje y determina la intención del usuario.
 
 Intenciones posibles:
+- "generar_excel_estudiantes": Usuario quiere generar un Excel con lista de estudiantes
 - "generar_excel_calificaciones": Usuario quiere generar un Excel con calificaciones
 - "generar_excel_asistencias": Usuario quiere generar un Excel con asistencias
 - "generar_excel_horario": Usuario quiere generar un Excel con horarios

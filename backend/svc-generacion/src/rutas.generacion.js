@@ -7,6 +7,7 @@ import { openai } from "../../libreria-compartida/src/openai.js";
 
 // Importar generadores
 import {
+  generarExcelEstudiantes,
   generarExcelCalificaciones,
   generarExcelAsistencias,
   generarExcelHorarioEstudiante
@@ -97,6 +98,34 @@ async function postChatHandler(req, res) {
 
       case 'consultar_asistencias':
         respuesta = await consultarAsistencias(parametros);
+        break;
+
+      case 'generar_excel_estudiantes':
+        if (!parametros.grado) {
+          respuesta = {
+            exito: false,
+            mensaje: "Necesito el grado para generar el Excel de estudiantes (ej: 6A, 7B)"
+          };
+        } else {
+          const periodoId = parametros.periodo_id || 1; // Período por defecto
+          const buffer = await generarExcelEstudiantes(parametros.grado, periodoId);
+          const nombreArchivo = `estudiantes_${parametros.grado}_${Date.now()}.xlsx`;
+          const rutaArchivo = path.join(DOCS_DIR, nombreArchivo);
+          fs.writeFileSync(rutaArchivo, buffer);
+
+          archivoGenerado = {
+            tipo: 'EXCEL',
+            nombre: nombreArchivo,
+            ruta: rutaArchivo,
+            url_descarga: `/generacion/descargar/${nombreArchivo}`
+          };
+
+          respuesta = {
+            exito: true,
+            mensaje: `Excel de estudiantes del grado ${parametros.grado} generado exitosamente`,
+            archivo: archivoGenerado
+          };
+        }
         break;
 
       case 'generar_excel_calificaciones':
