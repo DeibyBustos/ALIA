@@ -250,6 +250,44 @@ async function postChatHandler(req, res) {
         }
         break;
 
+      case 'consultar_estudiantes_grado':
+        if (!parametros.grado) {
+          respuesta = {
+            exito: false,
+            mensaje: "Necesito el grado para consultar los estudiantes (ej: 6A, 7B)"
+          };
+        } else {
+          const periodoIdConsulta = parametros.periodo_id || 1;
+          const estudiantes = await consultar(`
+            SELECT
+              e.id,
+              e.nombres,
+              e.apellidos,
+              e.documento,
+              g.etiqueta as grado
+            FROM estudiantes e
+            JOIN matriculas m ON m.estudiante_id = e.id
+            JOIN grados g ON g.id = m.grado_id
+            WHERE g.etiqueta = ? AND m.periodo_id = ?
+            ORDER BY e.apellidos, e.nombres
+          `, [parametros.grado, periodoIdConsulta]);
+
+          if (estudiantes.length === 0) {
+            respuesta = {
+              exito: true,
+              mensaje: `No hay estudiantes matriculados en el grado ${parametros.grado} para el período ${periodoIdConsulta}`,
+              datos: []
+            };
+          } else {
+            respuesta = {
+              exito: true,
+              mensaje: `Hay ${estudiantes.length} estudiante${estudiantes.length === 1 ? '' : 's'} en el grado ${parametros.grado}`,
+              datos: estudiantes
+            };
+          }
+        }
+        break;
+
       case 'consulta_general':
       default:
         // Usar RAG para responder pregunta general
