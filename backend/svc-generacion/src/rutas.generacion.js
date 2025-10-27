@@ -13,6 +13,7 @@ import {
   generarExcelHorarioEstudiante
 } from "./generadores/excel.generador.js";
 import {
+  generarPDFEstudiantes,
   generarPDFBoletin,
   generarPDFCertificado
 } from "./generadores/pdf.generador.js";
@@ -111,6 +112,12 @@ async function postChatHandler(req, res) {
           const buffer = await generarExcelEstudiantes(parametros.grado, periodoId);
           const nombreArchivo = `estudiantes_${parametros.grado}_${Date.now()}.xlsx`;
           const rutaArchivo = path.join(DOCS_DIR, nombreArchivo);
+
+          // Asegurar que el directorio existe
+          if (!fs.existsSync(DOCS_DIR)) {
+            fs.mkdirSync(DOCS_DIR, { recursive: true });
+          }
+
           fs.writeFileSync(rutaArchivo, buffer);
 
           archivoGenerado = {
@@ -128,6 +135,40 @@ async function postChatHandler(req, res) {
         }
         break;
 
+      case 'generar_pdf_estudiantes':
+        if (!parametros.grado) {
+          respuesta = {
+            exito: false,
+            mensaje: "Necesito el grado para generar el PDF de estudiantes (ej: 6A, 7B)"
+          };
+        } else {
+          const periodoIdPdf = parametros.periodo_id || 1; // Período por defecto
+          const bufferPdf = await generarPDFEstudiantes(parametros.grado, periodoIdPdf);
+          const nombreArchivoPdf = `estudiantes_${parametros.grado}_${Date.now()}.pdf`;
+          const rutaArchivoPdf = path.join(DOCS_DIR, nombreArchivoPdf);
+
+          // Asegurar que el directorio existe
+          if (!fs.existsSync(DOCS_DIR)) {
+            fs.mkdirSync(DOCS_DIR, { recursive: true });
+          }
+
+          fs.writeFileSync(rutaArchivoPdf, bufferPdf);
+
+          archivoGenerado = {
+            tipo: 'PDF',
+            nombre: nombreArchivoPdf,
+            ruta: rutaArchivoPdf,
+            url_descarga: `/generacion/descargar/${nombreArchivoPdf}`
+          };
+
+          respuesta = {
+            exito: true,
+            mensaje: `PDF de estudiantes del grado ${parametros.grado} generado exitosamente`,
+            archivo: archivoGenerado
+          };
+        }
+        break;
+
       case 'generar_excel_calificaciones':
         if (!parametros.curso_id || !parametros.periodo_id) {
           respuesta = {
@@ -138,6 +179,12 @@ async function postChatHandler(req, res) {
           const buffer = await generarExcelCalificaciones(parametros.curso_id, parametros.periodo_id);
           const nombreArchivo = `calificaciones_${Date.now()}.xlsx`;
           const rutaArchivo = path.join(DOCS_DIR, nombreArchivo);
+
+          // Asegurar que el directorio existe
+          if (!fs.existsSync(DOCS_DIR)) {
+            fs.mkdirSync(DOCS_DIR, { recursive: true });
+          }
+
           fs.writeFileSync(rutaArchivo, buffer);
 
           archivoGenerado = {
@@ -165,6 +212,12 @@ async function postChatHandler(req, res) {
           const buffer = await generarPDFBoletin(parametros.estudiante_id, parametros.periodo_id);
           const nombreArchivo = `boletin_${Date.now()}.pdf`;
           const rutaArchivo = path.join(DOCS_DIR, nombreArchivo);
+
+          // Asegurar que el directorio existe
+          if (!fs.existsSync(DOCS_DIR)) {
+            fs.mkdirSync(DOCS_DIR, { recursive: true });
+          }
+
           fs.writeFileSync(rutaArchivo, buffer);
 
           archivoGenerado = {

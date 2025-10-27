@@ -11,6 +11,10 @@ export async function extraerParametros(mensaje, intencion) {
 Ejemplo: "Genera un Excel de los estudiantes de 6A"
 Parámetros necesarios: grado (ej: 6A, 7B, etc), periodo_id (opcional, por defecto 1)
 `,
+    generar_pdf_estudiantes: `
+Ejemplo: "Genera un PDF de los estudiantes de 6A"
+Parámetros necesarios: grado (ej: 6A, 7B, etc), periodo_id (opcional, por defecto 1)
+`,
     insertar_calificacion: `
 Ejemplo: "Agrega una nota de 4.5 al estudiante Juan Pérez en Matemáticas"
 Parámetros necesarios: estudiante_nombre, asignatura, nota, tipo_evaluacion (opcional)

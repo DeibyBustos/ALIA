@@ -9,10 +9,11 @@ export async function analizarIntencion(mensaje) {
 
 Intenciones posibles:
 - "generar_excel_estudiantes": Usuario quiere generar un Excel con lista de estudiantes
+- "generar_pdf_estudiantes": Usuario quiere generar un PDF con lista de estudiantes
 - "generar_excel_calificaciones": Usuario quiere generar un Excel con calificaciones
 - "generar_excel_asistencias": Usuario quiere generar un Excel con asistencias
 - "generar_excel_horario": Usuario quiere generar un Excel con horarios
-- "generar_pdf_boletin": Usuario quiere un boletín de calificaciones en PDF
+- "generar_pdf_boletin": Usuario quiere un boletín de calificaciones en PDF (de UN estudiante específico)
 - "generar_pdf_certificado": Usuario quiere un certificado académico
 - "generar_word_informe": Usuario quiere un informe académico en Word
 - "insertar_calificacion": Usuario quiere agregar una nota/calificación

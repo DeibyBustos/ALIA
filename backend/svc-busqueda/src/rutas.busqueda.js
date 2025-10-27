@@ -3,11 +3,103 @@ import { consultar } from "../../libreria-compartida/src/db.js";
 import { similitudCoseno } from "../../libreria-compartida/src/similitud.js";
 import { embeddingTexto, responderConContexto } from "../../libreria-compartida/src/openai.js";
 import { logger } from "../../libreria-compartida/src/logger.js";
+import { openai } from "../../libreria-compartida/src/openai.js";
 
 const router = express.Router();
 router.use(express.json({ limit: "2mb", type: ["application/json", "application/*+json"] }));
 
+// URL del servicio de generación
+const SVC_GENERACION_URL = process.env.SVC_GENERACION_URL || 'http://localhost:8084';
+
 // UTILIDADES
+
+/**
+ * Detecta si la pregunta es sobre datos estructurados (BD) o documentos
+ * Retorna: 'database' | 'documents'
+ */
+async function detectarTipoConsulta(pregunta) {
+  const preguntaLower = pregunta.toLowerCase();
+
+  // Palabras clave que indican consulta/generación de BD
+  const palabrasDB = [
+    'generar', 'genera', 'generame', 'crear', 'crea', 'creame',
+    'excel', 'pdf', 'word', 'reporte', 'documento',
+    'estudiante', 'estudiantes', 'alumno', 'alumnos',
+    'nota', 'notas', 'calificacion', 'calificaciones',
+    'asistencia', 'asistencias', 'falta', 'faltas',
+    'grado', 'curso', 'docente', 'profesor', 'materia',
+    'cuantos', 'cuantas', 'listar', 'lista', 'dame',
+    'agregar', 'eliminar', 'modificar', 'actualizar'
+  ];
+
+  // Palabras clave que indican búsqueda en documentos
+  const palabrasDocs = [
+    'dice', 'contiene', 'menciona', 'habla sobre',
+    'buscar en', 'revisar', 'documento que', 'archivo que',
+    'manual', 'reglamento', 'normativa',
+    'pdf del', 'word del', 'archivo del'
+  ];
+
+  // Contar coincidencias
+  let conteoDoc = 0;
+  let conteoDocs = 0;
+
+  for (const palabra of palabrasDB) {
+    if (preguntaLower.includes(palabra)) {
+      conteoDoc++;
+    }
+  }
+
+  for (const palabra of palabrasDocs) {
+    if (preguntaLower.includes(palabra)) {
+      conteoDocs++;
+    }
+  }
+
+  // Decidir tipo según conteos
+  const tipo = conteoDoc > conteoDocs ? 'database' : 'documents';
+
+  logger.info({
+    pregunta: pregunta.substring(0, 100),
+    tipo,
+    conteoDoc,
+    conteoDocs
+  }, "🔍 Tipo de consulta detectado");
+
+  return tipo;
+}
+
+/**
+ * Redirige la consulta al servicio de generación para consultas de BD
+ */
+async function consultarBaseDatos(pregunta) {
+  try {
+    const response = await fetch(`${SVC_GENERACION_URL}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensaje: pregunta })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error del servicio de generación: ${response.status}`);
+    }
+
+    const data = await response.json();
+    logger.info({ intencion: data.intencion }, "✅ Respuesta del servicio de generación");
+
+    return {
+      respuesta: data.respuesta?.mensaje || JSON.stringify(data.respuesta, null, 2),
+      datos_estructurados: data.respuesta?.datos || null,
+      archivo_generado: data.respuesta?.archivo || null,
+      intencion: data.intencion,
+      parametros: data.parametros,
+      fuente: 'base_datos'
+    };
+  } catch (error) {
+    logger.error({ error: error.message }, "❌ Error consultando servicio de generación");
+    throw new Error(`No pude consultar la base de datos: ${error.message}`);
+  }
+}
 
 /** Escape para LIKE SQL */
 function escapeLike(str) {
@@ -251,24 +343,42 @@ async function scorearFragmentos(candidatos, pregunta) {
 
 router.post("/consulta", async (req, res) => {
   const t0 = Date.now();
-  
+
   try {
-    const { 
-      pregunta, 
-      k = 6, 
-      usarLLM = true, 
-      umbral = 0.1,  
+    const {
+      pregunta,
+      k = 6,
+      usarLLM = true,
+      umbral = 0.1,
       filtro = {},
-      maxDocs = 50  
+      maxDocs = 50
     } = req.body || {};
-    
+
     if (!pregunta || typeof pregunta !== "string" || pregunta.length < 3) {
-      return res.status(400).json({ 
-        error: "Campo 'pregunta' requerido (mínimo 3 caracteres)" 
+      return res.status(400).json({
+        error: "Campo 'pregunta' requerido (mínimo 3 caracteres)"
       });
     }
-    
+
     logger.info({ pregunta: pregunta.substring(0, 100) }, "Nueva consulta");
+
+    // DETECCIÓN AUTOMÁTICA: ¿Es consulta de BD o búsqueda de documentos?
+    const tipoConsulta = await detectarTipoConsulta(pregunta);
+
+    if (tipoConsulta === 'database') {
+      logger.info("🔄 Redirigiendo a consulta de base de datos");
+      try {
+        const resultado = await consultarBaseDatos(pregunta);
+        return res.json({
+          ...resultado,
+          ms: Date.now() - t0,
+          tipo_busqueda: 'base_datos'
+        });
+      } catch (error) {
+        logger.warn({ error: error.message }, "Falló consulta BD, intentando búsqueda en documentos");
+        // Continuar con búsqueda de documentos como fallback
+      }
+    }
     
 
     // ETAPA 1: Filtrar documentos relevantes
@@ -413,10 +523,11 @@ Recuerda: el objetivo es dar la respuesta MÁS COMPLETA Y ÚTIL posible basándo
       score: r.score
     }));
     
-    return res.json({ 
-      respuesta, 
+    return res.json({
+      respuesta,
       citas,
       modo: modoFallback ? "palabras" : "embeddings",
+      tipo_busqueda: 'documentos',
       ms: Date.now() - t0,
       stats: {
         documentos_analizados: idsDocumentos.length,

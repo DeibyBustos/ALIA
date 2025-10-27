@@ -77,7 +77,6 @@ export default function App() {
         </div>
 
         <Subida base={base} onUploaded={()=>{ }} />
-        <ConsultaRAG base={base} />
         <ChatAsistenteIA base={base} showToast={showToast} />
       </main>
 
@@ -540,6 +539,7 @@ function ChatAsistenteIA({ base, showToast }) {
 
     setCargando(true);
     try {
+      // Usar servicio de generación directamente
       const r = await fetch(`${base}/generacion/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -575,8 +575,8 @@ function ChatAsistenteIA({ base, showToast }) {
 
   return (
     <section className="card">
-      <h2>🤖 Asistente Académico con IA</h2>
-      <p className="muted">Chatea con el asistente para gestionar calificaciones, generar documentos y más usando lenguaje natural.</p>
+      <h2>🤖 Asistente Académico Inteligente</h2>
+      <p className="muted">Chatea con el asistente para gestionar calificaciones, generar documentos, buscar en archivos y más usando lenguaje natural.</p>
 
       <div className="row" style={{marginTop:10, marginBottom:10}}>
         <button className="btn success" onClick={nuevaConversacion}>+ Nueva Conversación</button>
@@ -607,16 +607,21 @@ function ChatAsistenteIA({ base, showToast }) {
       }}>
         {mensajes.length === 0 && (
           <div className="muted" style={{textAlign: 'center', marginTop: '50px'}}>
-            <p>👋 ¡Hola! Soy tu asistente académico.</p>
+            <p>👋 ¡Hola! Soy tu asistente académico inteligente.</p>
             <p>Puedo ayudarte con:</p>
             <ul style={{textAlign: 'left', display: 'inline-block'}}>
-              <li>Agregar o eliminar calificaciones</li>
-              <li>Registrar asistencias</li>
-              <li>Generar reportes en Excel, PDF o Word</li>
-              <li>Dar recomendaciones académicas</li>
-              <li>Consultar información del sistema</li>
+              <li>📊 Consultar datos de estudiantes, calificaciones y asistencias</li>
+              <li>📄 Generar reportes en Excel, PDF o Word</li>
+              <li>📚 Buscar información en documentos subidos (PDFs, Word, etc.)</li>
+              <li>✏️ Agregar o eliminar calificaciones</li>
+              <li>💡 Dar recomendaciones académicas</li>
             </ul>
-            <p style={{marginTop: 16}}>Escribe algo como: <code>"Agrega una nota de 4.5 a Juan Pérez en Matemáticas"</code></p>
+            <p style={{marginTop: 16, fontSize: 12}}>
+              <strong>Ejemplos:</strong><br/>
+              • "¿Cuáles son los estudiantes de 6A?"<br/>
+              • "Genera un PDF con los estudiantes de 5A"<br/>
+              • "¿Qué dice el manual de convivencia sobre uniformes?"
+            </p>
           </div>
         )}
 
@@ -674,8 +679,8 @@ function ChatAsistenteIA({ base, showToast }) {
         </button>
       </div>
 
-      <div className="muted" style={{marginTop: 8}}>
-        <strong>Ejemplos:</strong> "Dame las notas de María García" · "Genera un Excel con calificaciones del 5A" · "Recomendaciones para estudiante ID 10"
+      <div className="muted" style={{marginTop: 8, fontSize: 11}}>
+        <strong>Ejemplos:</strong> "Dame las notas de María García" · "Genera un Excel con calificaciones del 5A" · "¿Qué documentos hablan sobre matemáticas?" · "Lista de estudiantes de 6A en PDF"
       </div>
     </section>
   );

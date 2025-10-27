@@ -1,14 +1,31 @@
 import ExcelJS from 'exceljs';
 import { consultar } from '../../../libreria-compartida/src/db.js';
 import { logger } from '../../../libreria-compartida/src/logger.js';
+import {
+  validateExcelEstudiantesParams,
+  sanitizeDatabaseRow,
+  sanitizeString
+} from '../utils/validators.js';
 
 /**
  * Genera un Excel con la lista de estudiantes de un grado
  */
 export async function generarExcelEstudiantes(grado, periodoId) {
-  logger.info({ grado, periodoId }, '📊 Generando Excel de estudiantes');
+  // 1. Validar y sanitizar parámetros de entrada
+  const validation = validateExcelEstudiantesParams({ grado, periodo_id: periodoId });
 
-  // Obtener estudiantes del grado
+  if (!validation.valid) {
+    const errorMsg = validation.errors.join(', ');
+    logger.error({ grado, periodoId, errors: validation.errors }, 'Parámetros inválidos para generar Excel');
+    throw new Error(`Parámetros inválidos: ${errorMsg}`);
+  }
+
+  // Usar parámetros validados
+  const params = validation.params;
+
+  logger.info({ grado: params.grado, periodoId: params.periodo_id }, '📊 Generando Excel de estudiantes');
+
+  // 2. Obtener estudiantes del grado usando parámetros validados
   const estudiantes = await consultar(`
     SELECT
       e.id,
@@ -25,11 +42,14 @@ export async function generarExcelEstudiantes(grado, periodoId) {
     LEFT JOIN acudientes a ON a.id = ea.acudiente_id
     WHERE g.etiqueta = ? AND m.periodo_id = ?
     ORDER BY e.apellidos, e.nombres
-  `, [grado, periodoId]);
+  `, [params.grado, params.periodo_id]);
 
   if (estudiantes.length === 0) {
-    throw new Error(`No se encontraron estudiantes en el grado ${grado} para el período ${periodoId}`);
+    throw new Error(`No se encontraron estudiantes en el grado ${params.grado} para el período ${params.periodo_id}`);
   }
+
+  // 3. Sanitizar datos de la base de datos
+  const estudiantesSanitizados = estudiantes.map(est => sanitizeDatabaseRow(est));
 
   // Crear workbook
   const workbook = new ExcelJS.Workbook();
@@ -38,10 +58,10 @@ export async function generarExcelEstudiantes(grado, periodoId) {
   workbook.creator = 'ALIA - Sistema Académico';
   workbook.created = new Date();
 
-  // Título
+  // 4. Título con grado validado
   sheet.mergeCells('A1:F1');
   const titleCell = sheet.getCell('A1');
-  titleCell.value = `LISTA DE ESTUDIANTES - ${grado}`;
+  titleCell.value = `LISTA DE ESTUDIANTES - ${sanitizeString(params.grado, 'N/A').toUpperCase()}`;
   titleCell.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
   titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
   titleCell.fill = {
@@ -51,12 +71,12 @@ export async function generarExcelEstudiantes(grado, periodoId) {
   };
   sheet.getRow(1).height = 25;
 
-  // Información
-  sheet.getCell('A2').value = `Período: ${periodoId}`;
-  sheet.getCell('A3').value = `Total estudiantes: ${estudiantes.length}`;
+  // 5. Información con datos validados
+  sheet.getCell('A2').value = `Período: ${params.periodo_id}`;
+  sheet.getCell('A3').value = `Total estudiantes: ${estudiantesSanitizados.length}`;
   sheet.getCell('A4').value = `Fecha: ${new Date().toLocaleDateString('es-CO')}`;
 
-  // Encabezados
+  // 6. Encabezados
   const headerRow = sheet.getRow(6);
   headerRow.values = ['#', 'Apellidos', 'Nombres', 'Documento', 'Fecha Nacimiento', 'Acudiente'];
   headerRow.font = { bold: true };
@@ -68,16 +88,36 @@ export async function generarExcelEstudiantes(grado, periodoId) {
   headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
   headerRow.height = 20;
 
-  // Datos de estudiantes
-  estudiantes.forEach((est, index) => {
+  // 7. Datos de estudiantes con sanitización adicional
+  estudiantesSanitizados.forEach((est, index) => {
     const row = sheet.getRow(7 + index);
+
+    // Sanitizar cada campo antes de escribirlo
+    const apellidos = sanitizeString(est.apellidos, 'Sin apellido');
+    const nombres = sanitizeString(est.nombres, 'Sin nombre');
+    const documento = sanitizeString(est.documento, 'N/A', true);
+    const acudiente = sanitizeString(est.acudiente, 'N/A', true);
+
+    // Formatear fecha de forma segura
+    let fechaNacimiento = 'N/A';
+    if (est.fecha_nacimiento) {
+      try {
+        const fecha = new Date(est.fecha_nacimiento);
+        if (!isNaN(fecha.getTime())) {
+          fechaNacimiento = fecha.toLocaleDateString('es-CO');
+        }
+      } catch (error) {
+        logger.warn({ fecha: est.fecha_nacimiento }, 'Error formateando fecha de nacimiento');
+      }
+    }
+
     row.values = [
       index + 1,
-      est.apellidos,
-      est.nombres,
-      est.documento || 'N/A',
-      est.fecha_nacimiento ? new Date(est.fecha_nacimiento).toLocaleDateString('es-CO') : 'N/A',
-      est.acudiente || 'N/A'
+      apellidos,
+      nombres,
+      documento,
+      fechaNacimiento,
+      acudiente
     ];
 
     // Alternar colores de filas
@@ -100,8 +140,8 @@ export async function generarExcelEstudiantes(grado, periodoId) {
   sheet.getColumn(5).width = 18;
   sheet.getColumn(6).width = 25;
 
-  // Bordes
-  const lastRow = 6 + estudiantes.length;
+  // 8. Bordes
+  const lastRow = 6 + estudiantesSanitizados.length;
   for (let i = 6; i <= lastRow; i++) {
     for (let j = 1; j <= 6; j++) {
       const cell = sheet.getCell(i, j);
@@ -114,9 +154,13 @@ export async function generarExcelEstudiantes(grado, periodoId) {
     }
   }
 
-  // Generar buffer
+  // 9. Generar buffer
   const buffer = await workbook.xlsx.writeBuffer();
-  logger.info('✅ Excel de estudiantes generado exitosamente');
+  logger.info({
+    grado: params.grado,
+    periodo: params.periodo_id,
+    numEstudiantes: estudiantesSanitizados.length
+  }, '✅ Excel de estudiantes generado exitosamente');
 
   return buffer;
 }
