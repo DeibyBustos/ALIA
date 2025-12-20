@@ -275,14 +275,19 @@ async function postChatHandler(req, res) {
           if (estudiantes.length === 0) {
             respuesta = {
               exito: true,
-              mensaje: `No hay estudiantes matriculados en el grado ${parametros.grado} para el período ${periodoIdConsulta}`,
-              datos: []
+              mensaje: `No hay estudiantes matriculados en el grado ${parametros.grado} para el período ${periodoIdConsulta}.`
             };
           } else {
+            // Generar mensaje natural con la lista de estudiantes
+            let mensajeNatural = `En el grado ${parametros.grado} hay ${estudiantes.length} estudiante${estudiantes.length === 1 ? '' : 's'} matriculado${estudiantes.length === 1 ? '' : 's'}:\n\n`;
+
+            estudiantes.forEach((est, index) => {
+              mensajeNatural += `${index + 1}. ${est.nombres} ${est.apellidos} (Doc: ${est.documento})\n`;
+            });
+
             respuesta = {
               exito: true,
-              mensaje: `Hay ${estudiantes.length} estudiante${estudiantes.length === 1 ? '' : 's'} en el grado ${parametros.grado}`,
-              datos: estudiantes
+              mensaje: mensajeNatural.trim()
             };
           }
         }

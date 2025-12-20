@@ -58,6 +58,7 @@ app.get("/estado", (_req, res) => {
     ok: true,
     servicio: "api-gateway",
     servicios: {
+      auth:       `http://localhost:${process.env.PORT_SVC_AUTH       || 8085}`,
       documentos: `http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`,
       busqueda:   `http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`,
       ingesta:    `http://localhost:${process.env.PORT_SVC_INGESTA   || 8082}`,
@@ -67,6 +68,8 @@ app.get("/estado", (_req, res) => {
 });
 
 /** ===== Rutas proxied ===== */
+app.use("/auth", buildProxy(`http://localhost:${process.env.PORT_SVC_AUTH || 8085}`));
+
 app.use("/documentos", buildProxy(`http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`));
 app.use("/busqueda",  buildProxy(`http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`));
 app.use("/generacion", buildProxy(`http://localhost:${process.env.PORT_SVC_GENERACION || 8084}`));

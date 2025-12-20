@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "./useAuth";
 
 const STORAGE_KEY = "alia_base_url";
 
@@ -53,20 +54,176 @@ function Toast({msg, onDone}) {
   );
 }
 
+/* ===== Pantalla de Login ===== */
+function PantallaLogin({ auth, showToast }) {
+  const [correo, setCorreo] = useState('');
+  const [contrasena, setContrasena] = useState('');
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setCargando(true);
+
+    const resultado = await auth.login(correo, contrasena);
+
+    if (!resultado.exito) {
+      setError(resultado.mensaje);
+      setCargando(false);
+    } else {
+      showToast('Sesión iniciada correctamente');
+    }
+  };
+
+  const usarUsuarioDemo = (tipo) => {
+    const usuarios = {
+      docente: { correo: 'docente@alia.com', contrasena: '123456' },
+      coordinador: { correo: 'coordinador@alia.com', contrasena: '123456' },
+      admin: { correo: 'admin@alia.com', contrasena: '123456' },
+      superadmin: { correo: 'superadmin@alia.com', contrasena: '123456' }
+    };
+
+    const usuario = usuarios[tipo];
+    setCorreo(usuario.correo);
+    setContrasena(usuario.contrasena);
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+    }}>
+      <div className="card" style={{
+        maxWidth: 480,
+        width: '100%',
+        margin: 20,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+      }}>
+        <h1 style={{marginTop: 0, textAlign: 'center', marginBottom: 8}}>ALIA</h1>
+        <p style={{textAlign: 'center', margin: '0 0 24px', color: '#888'}}>
+          Asistente 
+        </p>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{marginBottom: 16}}>
+            <label>Correo electrónico</label>
+            <input
+              type="email"
+              value={correo}
+              onChange={(e) => setCorreo(e.target.value)}
+              placeholder="usuario@alia.com"
+              required
+              autoFocus
+            />
+          </div>
+
+          <div style={{marginBottom: 20}}>
+            <label>Contraseña</label>
+            <input
+              type="password"
+              value={contrasena}
+              onChange={(e) => setContrasena(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="bad" style={{marginBottom: 16, padding: 12}}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="btn"
+            disabled={cargando}
+            style={{width: '100%', marginBottom: 20}}
+          >
+            {cargando ? 'Iniciando sesión...' : 'Iniciar sesión'}
+          </button>
+        </form>
+
+{/*         <div style={{borderTop: '1px solid #e0e0e0', paddingTop: 20}}>
+          <p style={{fontSize: 13, color: '#888', marginBottom: 12, textAlign: 'center'}}>
+            Usuarios de prueba (contraseña: 123456):
+          </p>
+          <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+            <button
+              className="btn secondary"
+              onClick={() => usarUsuarioDemo('docente')}
+              style={{flex: 1, fontSize: 12}}
+            >
+              Docente
+            </button>
+            <button
+              className="btn secondary"
+              onClick={() => usarUsuarioDemo('coordinador')}
+              style={{flex: 1, fontSize: 12}}
+            >
+              Coordinador
+            </button>
+            <button
+              className="btn secondary"
+              onClick={() => usarUsuarioDemo('admin')}
+              style={{flex: 1, fontSize: 12}}
+            >
+              Administrativo
+            </button>
+            <button
+              className="btn secondary"
+              onClick={() => usarUsuarioDemo('superadmin')}
+              style={{flex: 1, fontSize: 12}}
+            >
+              Super Admin
+            </button>
+            </div>
+          </div> */}
+        
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { base, save } = useBaseURL();
   const [toast, setToast] = useState(null);
+  const auth = useAuth(base);
 
   const showToast = (m) => { setToast(m); };
 
+  // Mostrar pantalla de carga mientras se verifica la sesión
+  if (auth.cargando) {
+    return (
+      <div style={{display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh'}}>
+        <div className="muted">Cargando...</div>
+      </div>
+    );
+  }
+
+  // Si no está autenticado, mostrar pantalla de login
+  if (!auth.autenticado) {
+    return <PantallaLogin auth={auth} showToast={showToast} />;
+  }
+
+  // Usuario autenticado - mostrar aplicación normal
   return (
     <>
       <header>
         <h1>ALIA · Panel de Pruebas (RAG)</h1>
-        <div className="row" style={{maxWidth:520, marginLeft:"auto"}}>
+        <div className="row" style={{maxWidth:800, marginLeft:"auto", gap:10}}>
+          <div style={{display:'flex', alignItems:'center', gap:8}}>
+            <span className="muted" style={{fontSize:13}}>👤 {auth.usuario.nombre}</span>
+            <span className="pill" style={{fontSize:11}}>{auth.usuario.roles.join(', ')}</span>
+          </div>
           <input type="text" defaultValue={base} placeholder="URL del API Gateway"
-                 onBlur={(e)=>save(e.target.value)} />
+                 onBlur={(e)=>save(e.target.value)} style={{flex:1}} />
           <button className="btn secondary" onClick={()=>showToast("URL actualizada")}>Usar URL</button>
+          <button className="btn" onClick={auth.logout}>Salir</button>
         </div>
       </header>
 
@@ -77,7 +234,7 @@ export default function App() {
         </div>
 
         <Subida base={base} onUploaded={()=>{ }} />
-        <ChatAsistenteIA base={base} showToast={showToast} />
+        <ChatAsistenteIA base={base} showToast={showToast} auth={auth} />
       </main>
 
       {toast && <Toast msg={toast} onDone={()=>setToast(null)} />}
