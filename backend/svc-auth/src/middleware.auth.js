@@ -98,7 +98,7 @@ export function requiereRol(rolesPermitidos) {
           usuario: req.usuario.correo,
           rolesUsuario: roles,
           rolesRequeridos: rolesPermitidos
-        }, '🚫 Acceso denegado por falta de rol');
+        }, 'Acceso denegado por falta de rol');
 
         return res.status(403).json({
           error: 'No tienes permisos para acceder a este recurso',
@@ -110,12 +110,12 @@ export function requiereRol(rolesPermitidos) {
       logger.debug({
         usuario: req.usuario.correo,
         rol: roles.find(r => rolesPermitidos.includes(r))
-      }, '✅ Acceso autorizado');
+      }, 'Acceso autorizado');
 
       next();
 
     } catch (err) {
-      logger.error({ err }, '❌ Error en verificación de roles');
+      logger.error({ err }, 'Error en verificación de roles');
       return res.status(500).json({
         error: 'Error interno del servidor'
       });

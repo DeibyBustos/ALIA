@@ -23,7 +23,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    logger.info({ correo }, '🔑 Intento de login');
+    logger.info({ correo }, 'Intento de login');
 
     // 1. Buscar usuario por correo
     const usuarios = await consultar(
@@ -46,7 +46,7 @@ router.post('/login', async (req, res) => {
     const esValida = await bcrypt.compare(contrasena, usuario.contrasena_hash);
 
     if (!esValida) {
-      logger.warn({ correo }, '❌ Contraseña incorrecta');
+      logger.warn({ correo }, 'Contraseña incorrecta');
       return res.status(401).json({
         error: 'Credenciales inválidas'
       });
@@ -78,7 +78,7 @@ router.post('/login', async (req, res) => {
     logger.info({
       correo,
       roles: nombresRoles
-    }, '✅ Login exitoso');
+    }, 'Login exitoso');
 
     res.json({
       exito: true,
@@ -92,7 +92,7 @@ router.post('/login', async (req, res) => {
     });
 
   } catch (err) {
-    logger.error({ err }, '❌ Error en login');
+    logger.error({ err }, 'Error en login');
     res.status(500).json({
       error: 'Error interno del servidor'
     });
@@ -113,7 +113,7 @@ router.post('/registro', async (req, res) => {
       });
     }
 
-    logger.info({ correo, nombre_completo }, '📝 Intento de registro');
+    logger.info({ correo, nombre_completo }, 'Intento de registro');
 
     // 1. Verificar si el usuario ya existe
     const existente = await consultar(
@@ -194,7 +194,7 @@ router.post('/registro', async (req, res) => {
 router.get('/verificar', verificarToken, async (req, res) => {
   res.json({
     exito: true,
-    usuario: req.usuario // Poblado por el middleware verificarToken
+    usuario: req.usuario
   });
 });
 

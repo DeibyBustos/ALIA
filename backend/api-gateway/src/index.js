@@ -14,7 +14,6 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5174").
 
 const corsOptions = {
   origin(origin, callback) {
-    // Permite herramientas sin origen (curl, Postman, file:// etc.)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin) || process.env.NODE_ENV === "development") {
       return callback(null, true);
@@ -27,16 +26,12 @@ const corsOptions = {
   maxAge: 86400
 };
 
-/** ===== Middlewares globales (Opción B) =====
- * Importante: NO parsear JSON antes de los proxies.
- */
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors(corsOptions));
-// ❌ No uses app.options("(.*)", ...) en Express 5 (rompe path-to-regexp).
-// El middleware de cors arriba ya maneja OPTIONS por defecto.
+
 app.use(pinoHttp({ logger }));
 
-/** ===== Proxy factory (sin reinyectar body) ===== */
+/** ===== Proxy factory ===== */
 function buildProxy(target) {
   return createProxyMiddleware({
     target,
@@ -62,22 +57,19 @@ app.get("/estado", (_req, res) => {
       documentos: `http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`,
       busqueda:   `http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`,
       ingesta:    `http://localhost:${process.env.PORT_SVC_INGESTA   || 8082}`,
-      generacion: `http://localhost:${process.env.PORT_SVC_GENERACION || 8084}`
+      generacion: `http://localhost:${process.env.PORT_SVC_GENERACION || 8084}`,
+      usuarios: `http://localhost:${process.env.PORT_SVC_USUARIOS || 8086}`
     }
   });
 });
 
 /** ===== Rutas proxied ===== */
 app.use("/auth", buildProxy(`http://localhost:${process.env.PORT_SVC_AUTH || 8085}`));
-
+app.use("/usuarios", buildProxy(`http://localhost:${process.env.PORT_SVC_USUARIOS || 8086}`));
 app.use("/documentos", buildProxy(`http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`));
 app.use("/busqueda",  buildProxy(`http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`));
 app.use("/generacion", buildProxy(`http://localhost:${process.env.PORT_SVC_GENERACION || 8084}`));
 
-/** 
- * app.use(express.json({ limit: "1mb" }));
- * app.post("/algo-propio", (req,res)=>{ ... });
- */
 
 /** ===== 404 ===== */
 app.use((req, res) => {
