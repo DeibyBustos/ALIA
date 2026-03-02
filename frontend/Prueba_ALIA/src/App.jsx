@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "./useAuth";
 
 const STORAGE_KEY = "alia_base_url";
 
@@ -53,20 +54,176 @@ function Toast({msg, onDone}) {
   );
 }
 
+/* ===== Pantalla de Login ===== */
+function PantallaLogin({ auth, showToast }) {
+  const [correo, setCorreo] = useState('');
+  const [contrasena, setContrasena] = useState('');
+  const [cargando, setCargando] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setCargando(true);
+
+    const resultado = await auth.login(correo, contrasena);
+
+    if (!resultado.exito) {
+      setError(resultado.mensaje);
+      setCargando(false);
+    } else {
+      showToast('Sesión iniciada correctamente');
+    }
+  };
+
+  const usarUsuarioDemo = (tipo) => {
+    const usuarios = {
+      docente: { correo: 'docente@alia.com', contrasena: '123456' },
+      coordinador: { correo: 'coordinador@alia.com', contrasena: '123456' },
+      admin: { correo: 'admin@alia.com', contrasena: '123456' },
+      superadmin: { correo: 'superadmin@alia.com', contrasena: '123456' }
+    };
+
+    const usuario = usuarios[tipo];
+    setCorreo(usuario.correo);
+    setContrasena(usuario.contrasena);
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+    }}>
+      <div className="card" style={{
+        maxWidth: 480,
+        width: '100%',
+        margin: 20,
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
+      }}>
+        <h1 style={{marginTop: 0, textAlign: 'center', marginBottom: 8}}>ALIA</h1>
+        <p style={{textAlign: 'center', margin: '0 0 24px', color: '#888'}}>
+          Asistente 
+        </p>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{marginBottom: 16}}>
+            <label>Correo electrónico</label>
+            <input
+              type="email"
+              value={correo}
+              onChange={(e) => setCorreo(e.target.value)}
+              placeholder="usuario@alia.com"
+              required
+              autoFocus
+            />
+          </div>
+
+          <div style={{marginBottom: 20}}>
+            <label>Contraseña</label>
+            <input
+              type="password"
+              value={contrasena}
+              onChange={(e) => setContrasena(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
+          {error && (
+            <div className="bad" style={{marginBottom: 16, padding: 12}}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="btn"
+            disabled={cargando}
+            style={{width: '100%', marginBottom: 20}}
+          >
+            {cargando ? 'Iniciando sesión...' : 'Iniciar sesión'}
+          </button>
+        </form>
+
+{/*         <div style={{borderTop: '1px solid #e0e0e0', paddingTop: 20}}>
+          <p style={{fontSize: 13, color: '#888', marginBottom: 12, textAlign: 'center'}}>
+            Usuarios de prueba (contraseña: 123456):
+          </p>
+          <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+            <button
+              className="btn secondary"
+              onClick={() => usarUsuarioDemo('docente')}
+              style={{flex: 1, fontSize: 12}}
+            >
+              Docente
+            </button>
+            <button
+              className="btn secondary"
+              onClick={() => usarUsuarioDemo('coordinador')}
+              style={{flex: 1, fontSize: 12}}
+            >
+              Coordinador
+            </button>
+            <button
+              className="btn secondary"
+              onClick={() => usarUsuarioDemo('admin')}
+              style={{flex: 1, fontSize: 12}}
+            >
+              Administrativo
+            </button>
+            <button
+              className="btn secondary"
+              onClick={() => usarUsuarioDemo('superadmin')}
+              style={{flex: 1, fontSize: 12}}
+            >
+              Super Admin
+            </button>
+            </div>
+          </div> */}
+        
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { base, save } = useBaseURL();
   const [toast, setToast] = useState(null);
+  const auth = useAuth(base);
 
   const showToast = (m) => { setToast(m); };
 
+  // Mostrar pantalla de carga mientras se verifica la sesión
+  if (auth.cargando) {
+    return (
+      <div style={{display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh'}}>
+        <div className="muted">Cargando...</div>
+      </div>
+    );
+  }
+
+  // Si no está autenticado, mostrar pantalla de login
+  if (!auth.autenticado) {
+    return <PantallaLogin auth={auth} showToast={showToast} />;
+  }
+
+  // Usuario autenticado - mostrar aplicación normal
   return (
     <>
       <header>
         <h1>ALIA · Panel de Pruebas (RAG)</h1>
-        <div className="row" style={{maxWidth:520, marginLeft:"auto"}}>
+        <div className="row" style={{maxWidth:800, marginLeft:"auto", gap:10}}>
+          <div style={{display:'flex', alignItems:'center', gap:8}}>
+            <span className="muted" style={{fontSize:13}}>👤 {auth.usuario.nombre}</span>
+            <span className="pill" style={{fontSize:11}}>{auth.usuario.roles.join(', ')}</span>
+          </div>
           <input type="text" defaultValue={base} placeholder="URL del API Gateway"
-                 onBlur={(e)=>save(e.target.value)} />
+                 onBlur={(e)=>save(e.target.value)} style={{flex:1}} />
           <button className="btn secondary" onClick={()=>showToast("URL actualizada")}>Usar URL</button>
+          <button className="btn" onClick={auth.logout}>Salir</button>
         </div>
       </header>
 
@@ -76,8 +233,8 @@ export default function App() {
           <ListaDocs base={base} />
         </div>
 
-        <Subida base={base} onUploaded={()=>{ /* nada, la tabla tiene su botón */ }} />
-        <ConsultaRAG base={base} />
+        <Subida base={base} onUploaded={()=>{ }} />
+        <ChatAsistenteIA base={base} showToast={showToast} auth={auth} />
       </main>
 
       {toast && <Toast msg={toast} onDone={()=>setToast(null)} />}
@@ -293,7 +450,7 @@ function Subida({ base }) {
       {/* Sección de etiquetado rápido */}
       <div className="grid" style={{marginTop:10}}>
         <div className="card">
-          <h3 style={{marginTop:0, fontSize:14}}>🎯 Tipo de carga</h3>
+          <h3 style={{marginTop:0, fontSize:14}}>Tipo de carga</h3>
           <label>¿Deseas que este archivo dispare una importación?</label>
           <select value={tipoCarga} onChange={(e)=>setTipoCarga(e.target.value)}>
             <option value="">Ninguno (solo RAG)</option>
@@ -315,9 +472,9 @@ function Subida({ base }) {
           )}
 
           {tipoCarga && (
-            <div className="card" style={{marginTop:10, background:"#f0f9ff", border:"1px solid #0ea5e9"}}>
+            <div className="card" style={{marginTop:10, background:"#0a0a0aff", border:"1px solid #0ea5e9"}}>
               <p style={{margin:0, fontSize:13}}>
-                📋 Se enviará: <code style={{background:"white", padding:"2px 6px", borderRadius:4}}>
+                 Se enviará: <code style={{ padding:"2px 6px", borderRadius:4}}>
                   {JSON.stringify({import: tipoCarga, periodo: {anio: Number(periodoAnio), nombre: periodoNombre}})}
                 </code>
               </p>
@@ -326,7 +483,7 @@ function Subida({ base }) {
         </div>
 
         <div className="card">
-          <h3 style={{marginTop:0, fontSize:14}}>⚙️ Etiquetas (JSON avanzado, opcional)</h3>
+          <h3 style={{marginTop:0, fontSize:14}}>Etiquetas </h3>
           <label>Etiquetas JSON manual</label>
           <input
             ref={etiquetasRef}
@@ -334,7 +491,7 @@ function Subida({ base }) {
             placeholder='{"import":"estudiantes","periodo":{"anio":2025,"nombre":"ANUAL"}}'
           />
           <p className="muted" style={{marginTop:8}}>
-            Si completas este campo, se ignorará la selección "Tipo de carga" y se usará este JSON.
+        
           </p>
         </div>
       </div>
@@ -451,5 +608,301 @@ function ConsultaRAG({ base }) {
 
       <div id="consultaOut" className="stack" style={{marginTop:10}} dangerouslySetInnerHTML={{__html: out}} />
     </section>
+  );
+}
+
+/* ---------------- Chat Asistente IA (Servicio de Generación) ---------------- */
+function ChatAsistenteIA({ base, showToast }) {
+  const [idConversacion, setIdConversacion] = useState(null);
+  const [mensajes, setMensajes] = useState([]);
+  const [mensaje, setMensaje] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const [conversaciones, setConversaciones] = useState([]);
+  const mensajesEndRef = useRef(null);
+
+  // Auto-scroll al último mensaje
+  useEffect(() => {
+    mensajesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [mensajes]);
+
+  // Cargar lista de conversaciones
+  const cargarConversaciones = async () => {
+    try {
+      const r = await fetch(`${base}/generacion/conversaciones`);
+      const j = await r.json();
+      setConversaciones(Array.isArray(j) ? j : []);
+    } catch (e) {
+      console.error("Error cargando conversaciones:", e);
+    }
+  };
+
+  // Crear nueva conversación
+  const nuevaConversacion = async () => {
+    try {
+      const r = await fetch(`${base}/generacion/conversacion`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ titulo: "Nueva conversación" })
+      });
+      const j = await r.json();
+      setIdConversacion(j.id_conversacion);
+      setMensajes([]);
+      showToast("Conversación creada");
+      cargarConversaciones();
+    } catch (e) {
+      showToast("Error creando conversación");
+    }
+  };
+
+  // Cargar conversación existente
+  const cargarConversacion = async (id) => {
+    try {
+      const r = await fetch(`${base}/generacion/conversacion/${id}`);
+      const j = await r.json();
+      setIdConversacion(id);
+
+      // Parsear mensajes
+      const msgs = (j.mensajes || []).map(m => ({
+        rol: m.rol,
+        contenido: m.rol === 'assistant' ?
+          (typeof m.contenido === 'string' && m.contenido.startsWith('{') ?
+            JSON.parse(m.contenido) : m.contenido) :
+          m.contenido,
+        creado_en: m.creado_en
+      }));
+
+      setMensajes(msgs);
+    } catch (e) {
+      showToast("Error cargando conversación");
+    }
+  };
+
+  // Enviar mensaje
+  const enviarMensaje = async () => {
+    if (!mensaje.trim()) return;
+
+    // Si no hay conversación, crear una
+    if (!idConversacion) {
+      await nuevaConversacion();
+      // Esperar un poco para que se cree la conversación
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    const mensajeUsuario = mensaje.trim();
+    setMensaje("");
+
+    // Agregar mensaje del usuario al chat
+    setMensajes(prev => [...prev, { rol: 'user', contenido: mensajeUsuario }]);
+
+    setCargando(true);
+    try {
+      // Usar servicio de generación directamente
+      const r = await fetch(`${base}/generacion/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mensaje: mensajeUsuario,
+          id_conversacion: idConversacion
+        })
+      });
+
+      const j = await r.json();
+
+      // Agregar respuesta del asistente
+      setMensajes(prev => [...prev, {
+        rol: 'assistant',
+        contenido: j.respuesta,
+        intencion: j.intencion,
+        parametros: j.parametros
+      }]);
+    } catch (e) {
+      setMensajes(prev => [...prev, {
+        rol: 'assistant',
+        contenido: { exito: false, mensaje: `Error: ${e.message}` }
+      }]);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  // Cargar conversaciones al montar
+  useEffect(() => {
+    cargarConversaciones();
+  }, [base]);
+
+  return (
+    <section className="card">
+      <h2>🤖 Asistente Académico Inteligente</h2>
+      <p className="muted">Chatea con el asistente para gestionar calificaciones, generar documentos, buscar en archivos y más usando lenguaje natural.</p>
+
+      <div className="row" style={{marginTop:10, marginBottom:10}}>
+        <button className="btn success" onClick={nuevaConversacion}>+ Nueva Conversación</button>
+        <select
+          value={idConversacion || ""}
+          onChange={(e) => e.target.value && cargarConversacion(Number(e.target.value))}
+          style={{flex: 2}}
+        >
+          <option value="">Seleccionar conversación...</option>
+          {conversaciones.map(c => (
+            <option key={c.id} value={c.id}>
+              {c.titulo} ({c.num_mensajes} mensajes)
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Área de mensajes */}
+      <div style={{
+        background: '#0b1220',
+        border: '1px solid #1f2937',
+        borderRadius: '10px',
+        padding: '16px',
+        minHeight: '400px',
+        maxHeight: '500px',
+        overflowY: 'auto',
+        marginBottom: '10px'
+      }}>
+        {mensajes.length === 0 && (
+          <div className="muted" style={{textAlign: 'center', marginTop: '50px'}}>
+            <p>👋 ¡Hola! Soy tu asistente académico inteligente.</p>
+            <p>Puedo ayudarte con:</p>
+            <ul style={{textAlign: 'left', display: 'inline-block'}}>
+              <li>📊 Consultar datos de estudiantes, calificaciones y asistencias</li>
+              <li>📄 Generar reportes en Excel, PDF o Word</li>
+              <li>📚 Buscar información en documentos subidos (PDFs, Word, etc.)</li>
+              <li>✏️ Agregar o eliminar calificaciones</li>
+              <li>💡 Dar recomendaciones académicas</li>
+            </ul>
+            <p style={{marginTop: 16, fontSize: 12}}>
+              <strong>Ejemplos:</strong><br/>
+              • "¿Cuáles son los estudiantes de 6A?"<br/>
+              • "Genera un PDF con los estudiantes de 5A"<br/>
+              • "¿Qué dice el manual de convivencia sobre uniformes?"
+            </p>
+          </div>
+        )}
+
+        {mensajes.map((m, i) => (
+          <div key={i} style={{
+            marginBottom: '12px',
+            padding: '10px',
+            borderRadius: '8px',
+            background: m.rol === 'user' ? '#1e293b' : '#0f172a',
+            borderLeft: m.rol === 'user' ? '3px solid #3b82f6' : '3px solid #22c55e'
+          }}>
+            <div style={{fontSize: '11px', color: '#94a3b8', marginBottom: '4px'}}>
+              {m.rol === 'user' ? '👤 Usuario' : '🤖 Asistente'}
+              {m.intencion && <span className="pill" style={{marginLeft: 8}}>{m.intencion}</span>}
+            </div>
+
+            {m.rol === 'user' ? (
+              <div>{m.contenido}</div>
+            ) : (
+              <MensajeAsistente contenido={m.contenido} base={base} />
+            )}
+          </div>
+        ))}
+
+        {cargando && (
+          <div style={{textAlign: 'center', color: '#94a3b8'}}>
+            <span>⏳ Procesando...</span>
+          </div>
+        )}
+
+        <div ref={mensajesEndRef} />
+      </div>
+
+      {/* Input de mensaje */}
+      <div className="row">
+        <textarea
+          value={mensaje}
+          onChange={(e) => setMensaje(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              enviarMensaje();
+            }
+          }}
+          placeholder="Escribe tu mensaje aquí... (Enter para enviar)"
+          style={{minHeight: '60px', resize: 'vertical'}}
+          disabled={cargando}
+        />
+        <button
+          className="btn"
+          onClick={enviarMensaje}
+          disabled={cargando || !mensaje.trim()}
+        >
+          Enviar
+        </button>
+      </div>
+
+      <div className="muted" style={{marginTop: 8, fontSize: 11}}>
+        <strong>Ejemplos:</strong> "Dame las notas de María García" · "Genera un Excel con calificaciones del 5A" · "¿Qué documentos hablan sobre matemáticas?" · "Lista de estudiantes de 6A en PDF"
+      </div>
+    </section>
+  );
+}
+
+/* Componente para renderizar mensajes del asistente */
+function MensajeAsistente({ contenido, base }) {
+  if (!contenido) return <div className="muted">Sin respuesta</div>;
+
+  // Si es string JSON, parsearlo
+  if (typeof contenido === 'string') {
+    try {
+      contenido = JSON.parse(contenido);
+    } catch {
+      return <div>{contenido}</div>;
+    }
+  }
+
+  // Si tiene campo 'exito'
+  if (contenido.exito !== undefined) {
+    return (
+      <div className="stack">
+        {contenido.exito ? (
+          <div className="ok">✅ {contenido.mensaje}</div>
+        ) : (
+          <div className="bad">❌ {contenido.mensaje}</div>
+        )}
+
+        {/* Mostrar datos si existen */}
+        {contenido.datos && (
+          <details style={{marginTop: 8}}>
+            <summary className="muted" style={{cursor: 'pointer'}}>Ver detalles</summary>
+            <pre className="pre" style={{marginTop: 8, fontSize: 11}}>
+              {JSON.stringify(contenido.datos, null, 2)}
+            </pre>
+          </details>
+        )}
+
+        {/* Botón de descarga si hay archivo generado */}
+        {contenido.archivo && (
+          <div style={{marginTop: 8}}>
+            <a
+              href={`${base}${contenido.archivo.url_descarga}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn secondary"
+              style={{display: 'inline-block', textDecoration: 'none'}}
+            >
+              📄 Descargar {contenido.archivo.tipo}
+            </a>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Si tiene campo 'mensaje' directo
+  if (contenido.mensaje) {
+    return <div>{contenido.mensaje}</div>;
+  }
+
+  // Fallback: mostrar JSON
+  return (
+    <pre className="pre" style={{fontSize: 11}}>
+      {JSON.stringify(contenido, null, 2)}
+    </pre>
   );
 }
