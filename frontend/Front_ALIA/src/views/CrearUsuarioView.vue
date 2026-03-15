@@ -8,7 +8,7 @@
       <div class="login-form-inner">
         <p class="brand-label">ALIA</p>
 
-        <h2 class="form-title">Regístrate como docente</h2>
+        <h2 class="form-title">Regístrate en ALIA</h2>
         <p class="form-subtitle">Y gestiona tu asistente virtual</p>
 
         <form @submit.prevent="handleSubmit" class="form-body">

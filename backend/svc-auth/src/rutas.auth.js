@@ -34,7 +34,7 @@ router.post('/login', async (req, res) => {
     );
 
     if (usuarios.length === 0) {
-      logger.warn({ correo }, '❌ Usuario no encontrado o inactivo');
+      logger.warn({ correo }, 'Usuario no encontrado o inactivo');
       return res.status(401).json({
         error: 'Credenciales inválidas'
       });

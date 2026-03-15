@@ -9,6 +9,17 @@ import pinoHttp from "pino-http";
 const logger = pino({ level: process.env.LOG_LEVEL || "info" });
 const app = express();
 
+/** ===== Error handlers ===== */
+process.on("uncaughtException", (err) => {
+  console.error("uncaughtException:", err);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("unhandledRejection:", reason);
+  process.exit(1);
+});
+
 /** ===== CORS ===== */
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:5174").split(",");
 
@@ -66,10 +77,24 @@ app.get("/estado", (_req, res) => {
 /** ===== Rutas proxied ===== */
 app.use("/auth", buildProxy(`http://localhost:${process.env.PORT_SVC_AUTH || 8085}`));
 app.use("/usuarios", buildProxy(`http://localhost:${process.env.PORT_SVC_USUARIOS || 8086}`));
-app.use("/documentos", buildProxy(`http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`));
+app.use("/documentos", createProxyMiddleware({
+  target: `http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`,
+  changeOrigin: true,
+  pathRewrite: { "^/": "/documentos/" },
+  proxyTimeout: 30_000,
+  timeout: 30_000,
+  on: {
+    proxyReq(proxyReq, req) {
+      console.log("[PROXY DOC] originalUrl:", req.originalUrl, "→ path:", proxyReq.path);
+    }
+  },
+  onError(err, req, res) {
+    req.log?.error({ err }, "Error en proxy");
+    if (!res.headersSent) res.status(502).json({ error: "Error en proxy del gateway" });
+  }
+}));
 app.use("/busqueda",  buildProxy(`http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`));
 app.use("/generacion", buildProxy(`http://localhost:${process.env.PORT_SVC_GENERACION || 8084}`));
-
 
 /** ===== 404 ===== */
 app.use((req, res) => {
@@ -78,4 +103,9 @@ app.use((req, res) => {
 
 /** ===== Start ===== */
 const port = process.env.PORT_API_GATEWAY || 8080;
-app.listen(port, () => logger.info({ port }, "api-gateway escuchando"));
+const server = app.listen(port, () => logger.info({ port }, "api-gateway escuchando"));
+
+server.on("error", (err) => {
+  console.error("Error al iniciar servidor:", err);
+  process.exit(1);
+});

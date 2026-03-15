@@ -1,6 +1,6 @@
 <template>
   <div v-if="auth.loading.value" class="full-center">
-    <div class="muted">Cargando...</div>
+    <div class="loading-spinner"></div>
   </div>
 
   <!-- LOGIN -->
@@ -26,24 +26,15 @@
     @back-to-login="authView = 'login'"
   />
 
-  <!-- APP -->
-  <div v-else>
-    <AppHeader
-      :auth="auth"
-      :baseUrl="baseUrl"
-      :saveBaseUrl="saveBaseUrl"
-      :showToast="showToast"
-    />
+  <!-- ✅ APP con sidebar layout -->
+  <AppLayout
+    v-else
+    :auth="auth"
+    :baseUrl="baseUrl"
+    :showToast="showToast"
+  />
 
-    <main class="main">
-      <Subida :base="baseUrl" @uploaded="() => {}" />
-      <Asistente :base="baseUrl" :showToast="showToast" :auth="auth" />
-
-      <div class="card"></div>
-    </main>
-
-    <Toast v-if="toastMessage" :msg="toastMessage" @done="clearToast" />
-  </div>
+  <Toast v-if="toastMessage" :msg="toastMessage" @done="clearToast" />
 </template>
 
 <script setup>
@@ -54,30 +45,39 @@ import { useToast } from "@/composables/useToast";
 import { useAuth } from "@/composables/useAuth";
 
 import Toast from "@/components/common/Toast.vue";
-import AppHeader from "@/components/layouts/AppHeader.vue";
 import LoginView from "@/views/LoginView.vue";
 import CrearUsuarioView from "@/views/CrearUsuarioView.vue";
 import OlvidoContrasenaView from "@/views/OlvidoContrasenaView.vue";
-import Asistente from "@/components/features/Asistente.vue";
-import Subida from "@/components/features/Subida.vue";
+import AppLayout from "@/components/layouts/AppLayout.vue";  
 
 const { baseUrl: baseUrlRef, saveBaseUrl } = useBaseUrl();
 const { toastMessage, showToast, clearToast } = useToast();
 const auth = useAuth(baseUrlRef);
 
 const baseUrl = computed(() => baseUrlRef.value);
-
-
 const authView = ref("login");
 
 watch(
   () => auth.isAuthenticated.value,
-  (isAuth) => {
-    if (!isAuth) authView.value = "login";
-  }
+  (isAuth) => { if (!isAuth) authView.value = "login"; }
 );
-
-const emit = defineEmits(["go-create-user", "go-forgot-password"]);
-
-
 </script>
+
+<style>
+.full-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: #080f1e;
+}
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #1e293b;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>

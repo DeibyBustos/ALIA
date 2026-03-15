@@ -18,7 +18,6 @@ export function verificarToken(req, res, next) {
       });
     }
 
-    // Extraer token del header "Bearer <token>"
     const partes = authHeader.split(' ');
 
     if (partes.length !== 2 || partes[0] !== 'Bearer') {
@@ -30,10 +29,8 @@ export function verificarToken(req, res, next) {
 
     const token = partes[1];
 
-    // Verificar y decodificar token
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    // Agregar información del usuario a la request
     req.usuario = {
       id: decoded.id,
       correo: decoded.correo,
@@ -44,7 +41,7 @@ export function verificarToken(req, res, next) {
     logger.debug({
       usuario: decoded.correo,
       roles: decoded.roles
-    }, '✅ Token verificado');
+    }, ' Token verificado');
 
     next();
 
@@ -74,8 +71,8 @@ export function verificarToken(req, res, next) {
  * Middleware para requerir roles específicos
  * Debe usarse después de verificarToken
  *
- * @param {Array<string>} rolesPermitidos - Array de roles permitidos (ej: ['ADMIN', 'COORDINADOR'])
- * @returns {Function} Middleware de Express
+ * @param {Array<string>} rolesPermitidos 
+ * @returns {Function}
  */
 export function requiereRol(rolesPermitidos) {
   return (req, res, next) => {
@@ -132,7 +129,6 @@ export function verificarTokenOpcional(req, res, next) {
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
-      // No hay token, continuar sin usuario
       req.usuario = null;
       return next();
     }
@@ -157,7 +153,6 @@ export function verificarTokenOpcional(req, res, next) {
     next();
 
   } catch (err) {
-    // Si hay error, simplemente continuar sin usuario
     req.usuario = null;
     next();
   }

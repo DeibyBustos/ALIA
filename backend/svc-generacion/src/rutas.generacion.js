@@ -36,6 +36,15 @@ import {
   consultarAsistencias
 } from "./operaciones/asistencias.ops.js";
 
+// ── NUEVOS HANDLERS DE CONSULTA ──────────────────────────────────────────────
+import {
+  consultarMateriasEstudiante,
+  consultarAcudiente,
+  consultarInfoEstudiante,
+  consultarEstudiantesGrado,
+  consultarHorarioEstudiante
+} from "./operaciones/consultas.ops.js";
+
 // Importar recomendaciones
 import { generarRecomendaciones } from "./recomendaciones/rendimiento.js";
 
@@ -48,6 +57,20 @@ const router = express.Router();
 const DOCS_DIR = path.join(process.cwd(), '..', 'storage', 'generados');
 if (!fs.existsSync(DOCS_DIR)) {
   fs.mkdirSync(DOCS_DIR, { recursive: true });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function guardarArchivo(buffer, nombreArchivo) {
+  if (!fs.existsSync(DOCS_DIR)) fs.mkdirSync(DOCS_DIR, { recursive: true });
+  const rutaArchivo = path.join(DOCS_DIR, nombreArchivo);
+  fs.writeFileSync(rutaArchivo, buffer);
+  return {
+    tipo: nombreArchivo.endsWith('.xlsx') ? 'EXCEL' : nombreArchivo.endsWith('.pdf') ? 'PDF' : 'WORD',
+    nombre: nombreArchivo,
+    ruta: rutaArchivo,
+    url_descarga: `/generacion/descargar/${nombreArchivo}`
+  };
 }
 
 /**
@@ -70,6 +93,7 @@ async function postChatHandler(req, res) {
 
     // 2. Analizar intención
     const intencion = await analizarIntencion(mensaje);
+  console.log('>>> INTENCION RAW:', JSON.stringify(intencion));
     logger.info({ intencion }, "🎯 Intención detectada");
 
     // 3. Extraer parámetros
@@ -81,6 +105,9 @@ async function postChatHandler(req, res) {
     let archivoGenerado = null;
 
     switch (intencion) {
+
+      // ── OPERACIONES DE ESCRITURA ────────────────────────────────────────────
+
       case 'insertar_calificacion':
         respuesta = await insertarCalificacion(parametros);
         break;
@@ -89,213 +116,183 @@ async function postChatHandler(req, res) {
         respuesta = await eliminarCalificacion(parametros);
         break;
 
-      case 'consultar_notas':
-        respuesta = await consultarCalificaciones(parametros);
-        break;
-
       case 'insertar_asistencia':
         respuesta = await insertarAsistencia(parametros);
+        break;
+
+      // ── CONSULTAS A LA BD ───────────────────────────────────────────────────
+
+      case 'consultar_notas':
+        respuesta = await consultarCalificaciones(parametros);
         break;
 
       case 'consultar_asistencias':
         respuesta = await consultarAsistencias(parametros);
         break;
 
-      case 'generar_excel_estudiantes':
-        if (!parametros.grado) {
-          respuesta = {
-            exito: false,
-            mensaje: "Necesito el grado para generar el Excel de estudiantes (ej: 6A, 7B)"
-          };
-        } else {
-          const periodoId = parametros.periodo_id || 1; // Período por defecto
-          const buffer = await generarExcelEstudiantes(parametros.grado, periodoId);
-          const nombreArchivo = `estudiantes_${parametros.grado}_${Date.now()}.xlsx`;
-          const rutaArchivo = path.join(DOCS_DIR, nombreArchivo);
-
-          // Asegurar que el directorio existe
-          if (!fs.existsSync(DOCS_DIR)) {
-            fs.mkdirSync(DOCS_DIR, { recursive: true });
-          }
-
-          fs.writeFileSync(rutaArchivo, buffer);
-
-          archivoGenerado = {
-            tipo: 'EXCEL',
-            nombre: nombreArchivo,
-            ruta: rutaArchivo,
-            url_descarga: `/generacion/descargar/${nombreArchivo}`
-          };
-
-          respuesta = {
-            exito: true,
-            mensaje: `Excel de estudiantes del grado ${parametros.grado} generado exitosamente`,
-            archivo: archivoGenerado
-          };
-        }
-        break;
-
-      case 'generar_pdf_estudiantes':
-        if (!parametros.grado) {
-          respuesta = {
-            exito: false,
-            mensaje: "Necesito el grado para generar el PDF de estudiantes (ej: 6A, 7B)"
-          };
-        } else {
-          const periodoIdPdf = parametros.periodo_id || 1; // Período por defecto
-          const bufferPdf = await generarPDFEstudiantes(parametros.grado, periodoIdPdf);
-          const nombreArchivoPdf = `estudiantes_${parametros.grado}_${Date.now()}.pdf`;
-          const rutaArchivoPdf = path.join(DOCS_DIR, nombreArchivoPdf);
-
-          // Asegurar que el directorio existe
-          if (!fs.existsSync(DOCS_DIR)) {
-            fs.mkdirSync(DOCS_DIR, { recursive: true });
-          }
-
-          fs.writeFileSync(rutaArchivoPdf, bufferPdf);
-
-          archivoGenerado = {
-            tipo: 'PDF',
-            nombre: nombreArchivoPdf,
-            ruta: rutaArchivoPdf,
-            url_descarga: `/generacion/descargar/${nombreArchivoPdf}`
-          };
-
-          respuesta = {
-            exito: true,
-            mensaje: `PDF de estudiantes del grado ${parametros.grado} generado exitosamente`,
-            archivo: archivoGenerado
-          };
-        }
-        break;
-
-      case 'generar_excel_calificaciones':
-        if (!parametros.curso_id || !parametros.periodo_id) {
-          respuesta = {
-            exito: false,
-            mensaje: "Necesito el curso_id y periodo_id para generar el Excel"
-          };
-        } else {
-          const buffer = await generarExcelCalificaciones(parametros.curso_id, parametros.periodo_id);
-          const nombreArchivo = `calificaciones_${Date.now()}.xlsx`;
-          const rutaArchivo = path.join(DOCS_DIR, nombreArchivo);
-
-          // Asegurar que el directorio existe
-          if (!fs.existsSync(DOCS_DIR)) {
-            fs.mkdirSync(DOCS_DIR, { recursive: true });
-          }
-
-          fs.writeFileSync(rutaArchivo, buffer);
-
-          archivoGenerado = {
-            tipo: 'EXCEL',
-            nombre: nombreArchivo,
-            ruta: rutaArchivo,
-            url_descarga: `/generacion/descargar/${nombreArchivo}`
-          };
-
-          respuesta = {
-            exito: true,
-            mensaje: "Excel de calificaciones generado exitosamente",
-            archivo: archivoGenerado
-          };
-        }
-        break;
-
-      case 'generar_pdf_boletin':
-        if (!parametros.estudiante_id || !parametros.periodo_id) {
-          respuesta = {
-            exito: false,
-            mensaje: "Necesito el estudiante_id y periodo_id para generar el boletín"
-          };
-        } else {
-          const buffer = await generarPDFBoletin(parametros.estudiante_id, parametros.periodo_id);
-          const nombreArchivo = `boletin_${Date.now()}.pdf`;
-          const rutaArchivo = path.join(DOCS_DIR, nombreArchivo);
-
-          // Asegurar que el directorio existe
-          if (!fs.existsSync(DOCS_DIR)) {
-            fs.mkdirSync(DOCS_DIR, { recursive: true });
-          }
-
-          fs.writeFileSync(rutaArchivo, buffer);
-
-          archivoGenerado = {
-            tipo: 'PDF',
-            nombre: nombreArchivo,
-            ruta: rutaArchivo,
-            url_descarga: `/generacion/descargar/${nombreArchivo}`
-          };
-
-          respuesta = {
-            exito: true,
-            mensaje: "Boletín PDF generado exitosamente",
-            archivo: archivoGenerado
-          };
-        }
-        break;
-
-      case 'recomendar':
-        if (!parametros.estudiante_id || !parametros.periodo_id) {
-          respuesta = {
-            exito: false,
-            mensaje: "Necesito el estudiante_id y periodo_id para generar recomendaciones"
-          };
-        } else {
-          const recomendaciones = await generarRecomendaciones(parametros.estudiante_id, parametros.periodo_id);
-          respuesta = {
-            exito: true,
-            datos: recomendaciones
-          };
-        }
-        break;
-
-      case 'consultar_estudiantes_grado':
+      case 'consultar_estudiantes_grado': {
+        // Primero intenta con el handler nuevo (soporta periodo flexible)
+        // Si no viene grado, pide aclaración
         if (!parametros.grado) {
           respuesta = {
             exito: false,
             mensaje: "Necesito el grado para consultar los estudiantes (ej: 6A, 7B)"
           };
-        } else {
-          const periodoIdConsulta = parametros.periodo_id || 1;
-          const estudiantes = await consultar(`
-            SELECT
-              e.id,
-              e.nombres,
-              e.apellidos,
-              e.documento,
-              g.etiqueta as grado
-            FROM estudiantes e
-            JOIN matriculas m ON m.estudiante_id = e.id
-            JOIN grados g ON g.id = m.grado_id
-            WHERE g.etiqueta = ? AND m.periodo_id = ?
-            ORDER BY e.apellidos, e.nombres
-          `, [parametros.grado, periodoIdConsulta]);
+          break;
+        }
+        respuesta = await consultarEstudiantesGrado(parametros);
+        // Si el handler devuelve lista, formatear como mensaje natural
+        if (respuesta.exito && respuesta.datos?.estudiantes?.length) {
+          const { estudiantes, grado, total } = respuesta.datos;
+          let msg = `En el grado ${grado} hay ${total} estudiante${total === 1 ? '' : 's'} matriculado${total === 1 ? '' : 's'}:\n\n`;
+          estudiantes.forEach((e, i) => {
+            msg += `${i + 1}. ${e.nombres} ${e.apellidos}${e.documento ? ` (Doc: ${e.documento})` : ''}\n`;
+          });
+          respuesta.mensaje = msg.trim();
+        }
+        break;
+      }
 
-          if (estudiantes.length === 0) {
-            respuesta = {
-              exito: true,
-              mensaje: `No hay estudiantes matriculados en el grado ${parametros.grado} para el período ${periodoIdConsulta}.`
-            };
-          } else {
-            // Generar mensaje natural con la lista de estudiantes
-            let mensajeNatural = `En el grado ${parametros.grado} hay ${estudiantes.length} estudiante${estudiantes.length === 1 ? '' : 's'} matriculado${estudiantes.length === 1 ? '' : 's'}:\n\n`;
-
-            estudiantes.forEach((est, index) => {
-              mensajeNatural += `${index + 1}. ${est.nombres} ${est.apellidos} (Doc: ${est.documento})\n`;
-            });
-
-            respuesta = {
-              exito: true,
-              mensaje: mensajeNatural.trim()
-            };
-          }
+      case 'consultar_materias_estudiante':
+        if (!parametros.estudiante_nombre) {
+          respuesta = { exito: false, mensaje: "Necesito el nombre del estudiante para consultar sus materias." };
+          break;
+        }
+        respuesta = await consultarMateriasEstudiante(parametros);
+        // Formatear respuesta como texto natural
+        if (respuesta.exito && respuesta.datos?.materias?.length) {
+          const { estudiante, grado, materias } = respuesta.datos;
+          let msg = `📚 ${estudiante} (Grado ${grado}) tiene las siguientes materias:\n\n`;
+          materias.forEach((m, i) => {
+            msg += `${i + 1}. ${m.asignatura}`;
+            if (m.docente) msg += ` — Docente: ${m.docente}`;
+            msg += `\n`;
+          });
+          respuesta.mensaje = msg.trim();
         }
         break;
 
+      case 'consultar_acudiente':
+        if (!parametros.estudiante_nombre) {
+          respuesta = { exito: false, mensaje: "Necesito el nombre del estudiante para consultar su acudiente." };
+          break;
+        }
+        respuesta = await consultarAcudiente(parametros);
+        if (respuesta.exito && respuesta.datos?.acudientes?.length) {
+          const { estudiante, acudientes } = respuesta.datos;
+          let msg = '';
+          acudientes.forEach((a) => {
+            msg += `El acudiente de ${estudiante} se llama ${a.nombres} ${a.apellidos}`;
+            if (a.relacion) msg += `, quien es su ${a.relacion.toLowerCase()}`;
+            msg += '.';
+            if (a.telefono && a.correo) {
+              msg += ` Su número registrado es ${a.telefono} y su correo es ${a.correo}.`;
+            } else if (a.telefono) {
+              msg += ` Su número registrado es ${a.telefono}.`;
+            } else if (a.correo) {
+              msg += ` Su correo registrado es ${a.correo}.`;
+            }
+            msg += '\n\n';
+          });
+          respuesta.mensaje = msg.trim();
+        }
+        break;
+
+      case 'consultar_info_estudiante':
+        if (!parametros.estudiante_nombre) {
+          respuesta = { exito: false, mensaje: "Necesito el nombre del estudiante para consultar su información." };
+          break;
+        }
+        respuesta = await consultarInfoEstudiante(parametros);
+        if (respuesta.exito && respuesta.datos) {
+          const { estudiante, matricula_actual } = respuesta.datos;
+          let msg = `🎓 ${estudiante.nombre}\n`;
+          if (estudiante.documento) msg += `📋 Documento: ${estudiante.documento}\n`;
+          if (estudiante.fecha_nacimiento) msg += `🎂 Nacimiento: ${estudiante.fecha_nacimiento}\n`;
+          if (matricula_actual) {
+            msg += `\n📍 Matrícula actual:\n`;
+            msg += `   Grado: ${matricula_actual.grado} | Período: ${matricula_actual.periodo} ${matricula_actual.anio} | Estado: ${matricula_actual.estado}`;
+          }
+          respuesta.mensaje = msg.trim();
+        }
+        break;
+
+      case 'consultar_horario_estudiante':
+        if (!parametros.estudiante_nombre) {
+          respuesta = { exito: false, mensaje: "Necesito el nombre del estudiante para consultar su horario." };
+          break;
+        }
+        respuesta = await consultarHorarioEstudiante(parametros);
+        if (respuesta.exito && respuesta.datos?.horario?.length) {
+          const dias = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+          const { estudiante, horario } = respuesta.datos;
+          let msg = `🗓️ Horario de ${estudiante}:\n\n`;
+          for (const h of horario) {
+            const dia = dias[h.dia_semana] || `Día ${h.dia_semana}`;
+            msg += `${dia} ${h.hora_inicio}–${h.hora_fin}: ${h.asignatura}`;
+            if (h.aula) msg += ` (${h.aula})`;
+            if (h.docente) msg += ` — ${h.docente}`;
+            msg += '\n';
+          }
+          respuesta.mensaje = msg.trim();
+        }
+        break;
+
+      // ── GENERACIÓN DE ARCHIVOS ──────────────────────────────────────────────
+
+      case 'generar_excel_estudiantes':
+        if (!parametros.grado) {
+          respuesta = { exito: false, mensaje: "Necesito el grado para generar el Excel de estudiantes (ej: 6A, 7B)" };
+        } else {
+          const buffer = await generarExcelEstudiantes(parametros.grado, parametros.periodo_id || 1);
+          archivoGenerado = guardarArchivo(buffer, `estudiantes_${parametros.grado}_${Date.now()}.xlsx`);
+          respuesta = { exito: true, mensaje: `✅ Excel de estudiantes del grado ${parametros.grado} generado exitosamente`, archivo: archivoGenerado };
+        }
+        break;
+
+      case 'generar_pdf_estudiantes':
+        if (!parametros.grado) {
+          respuesta = { exito: false, mensaje: "Necesito el grado para generar el PDF de estudiantes (ej: 6A, 7B)" };
+        } else {
+          const buffer = await generarPDFEstudiantes(parametros.grado, parametros.periodo_id || 1);
+          archivoGenerado = guardarArchivo(buffer, `estudiantes_${parametros.grado}_${Date.now()}.pdf`);
+          respuesta = { exito: true, mensaje: `✅ PDF de estudiantes del grado ${parametros.grado} generado exitosamente`, archivo: archivoGenerado };
+        }
+        break;
+
+      case 'generar_excel_calificaciones':
+        if (!parametros.curso_id || !parametros.periodo_id) {
+          respuesta = { exito: false, mensaje: "Necesito el curso_id y periodo_id para generar el Excel" };
+        } else {
+          const buffer = await generarExcelCalificaciones(parametros.curso_id, parametros.periodo_id);
+          archivoGenerado = guardarArchivo(buffer, `calificaciones_${Date.now()}.xlsx`);
+          respuesta = { exito: true, mensaje: "✅ Excel de calificaciones generado exitosamente", archivo: archivoGenerado };
+        }
+        break;
+
+      case 'generar_pdf_boletin':
+        if (!parametros.estudiante_id || !parametros.periodo_id) {
+          respuesta = { exito: false, mensaje: "Necesito el estudiante_id y periodo_id para generar el boletín" };
+        } else {
+          const buffer = await generarPDFBoletin(parametros.estudiante_id, parametros.periodo_id);
+          archivoGenerado = guardarArchivo(buffer, `boletin_${Date.now()}.pdf`);
+          respuesta = { exito: true, mensaje: "✅ Boletín PDF generado exitosamente", archivo: archivoGenerado };
+        }
+        break;
+
+      case 'recomendar':
+        if (!parametros.estudiante_id || !parametros.periodo_id) {
+          respuesta = { exito: false, mensaje: "Necesito el estudiante_id y periodo_id para generar recomendaciones" };
+        } else {
+          const recomendaciones = await generarRecomendaciones(parametros.estudiante_id, parametros.periodo_id);
+          respuesta = { exito: true, datos: recomendaciones };
+        }
+        break;
+
+      // ── FALLBACK ────────────────────────────────────────────────────────────
+
       case 'consulta_general':
       default:
-        // Usar RAG para responder pregunta general
         respuesta = await procesarConsultaGeneral(mensaje, contextoMgr);
         break;
     }
@@ -310,13 +307,11 @@ async function postChatHandler(req, res) {
         id_conversacion, JSON.stringify(respuesta), JSON.stringify({ intencion })
       ]);
 
-      // Guardar operación ejecutada
       await ejecutar(`
         INSERT INTO operaciones_ia (id_conversacion, tipo_operacion, parametros, resultado, estado)
         VALUES (?, ?, ?, ?, 'EJECUTADA')
       `, [id_conversacion, intencion, JSON.stringify(parametros), JSON.stringify(respuesta)]);
 
-      // Guardar documento si se generó
       if (archivoGenerado) {
         await ejecutar(`
           INSERT INTO documentos_generados (id_conversacion, tipo_documento, nombre_archivo, ruta_almacenamiento, parametros_generacion, tamano_bytes)
@@ -337,47 +332,35 @@ async function postChatHandler(req, res) {
     contextoMgr.actualizarContexto('ultimos_parametros', parametros);
     await contextoMgr.guardarContexto();
 
-    res.json({
-      mensaje,
-      intencion,
-      parametros,
-      respuesta,
-      id_conversacion
-    });
+    res.json({ mensaje, intencion, parametros, respuesta, id_conversacion });
 
   } catch (err) {
     logger.error({ err, stack: err.stack }, "❌ Error en chat handler");
-    res.status(500).json({
-      error: "Error procesando mensaje",
-      detalle: err.message
-    });
+    res.status(500).json({ error: "Error procesando mensaje", detalle: err.message });
   }
 }
 
 /**
- * Procesa consulta general usando RAG
+ * Procesa consulta general usando RAG + historial
+ * Solo para preguntas que no involucran datos específicos de la BD
  */
 async function procesarConsultaGeneral(pregunta, contextoMgr) {
   try {
-    // Aquí integrarías con svc-busqueda para obtener contexto relevante
-    // Por ahora, respuesta simple con IA
     const historial = await contextoMgr.obtenerHistorial(5);
     const resumenContexto = contextoMgr.generarResumenContexto();
 
-    // Construir prompt con contexto
     const mensajes = [
       {
         role: 'system',
-        content: `Eres un asistente académico del sistema ALIA. ${resumenContexto}`
+        content: `Eres un asistente académico del sistema ALIA. Tienes acceso a información académica de estudiantes, docentes, calificaciones y asistencias. 
+${resumenContexto}
+Si el usuario pregunta sobre datos específicos de un estudiante, acudiente, materias o notas, indícale que puedes consultar esa información directamente si te da el nombre del estudiante.`
       },
       ...historial.map(h => ({
-        role: h.rol,
-        content: h.contenido
+        role: h.rol === 'user' ? 'user' : 'assistant',
+        content: typeof h.contenido === 'string' ? h.contenido : JSON.stringify(h.contenido)
       })),
-      {
-        role: 'user',
-        content: pregunta
-      }
+      { role: 'user', content: pregunta }
     ];
 
     const response = await openai.chat.completions.create({
@@ -387,103 +370,61 @@ async function procesarConsultaGeneral(pregunta, contextoMgr) {
       max_tokens: 500
     });
 
-    const respuesta = response.choices[0]?.message?.content;
-
     return {
       exito: true,
-      mensaje: respuesta,
+      mensaje: response.choices[0]?.message?.content,
       tokens_usados: response.usage?.total_tokens
     };
 
   } catch (err) {
     logger.error({ err }, "❌ Error en consulta general");
-    return {
-      exito: false,
-      mensaje: "No pude procesar tu pregunta en este momento"
-    };
+    return { exito: false, mensaje: "No pude procesar tu pregunta en este momento" };
   }
 }
 
-/**
- * POST /generacion/conversacion
- * Crea una nueva conversación
- */
+// ── REST DE RUTAS (sin cambios) ───────────────────────────────────────────────
+
 async function postConversacionHandler(req, res) {
   try {
     const { titulo, id_usuario, contexto_inicial } = req.body;
-
     const result = await ejecutar(`
       INSERT INTO conversaciones (titulo, id_usuario, contexto_inicial)
       VALUES (?, ?, ?)
-    `, [
-      titulo || "Nueva conversación",
-      id_usuario || null,
-      contexto_inicial ? JSON.stringify(contexto_inicial) : null
-    ]);
+    `, [titulo || "Nueva conversación", id_usuario || null, contexto_inicial ? JSON.stringify(contexto_inicial) : null]);
 
-    logger.info({ id_conversacion: result.insertId }, "💬 Nueva conversación creada");
-
-    res.status(201).json({
-      id_conversacion: result.insertId,
-      titulo: titulo || "Nueva conversación"
-    });
-
+    res.status(201).json({ id_conversacion: result.insertId, titulo: titulo || "Nueva conversación" });
   } catch (err) {
     logger.error({ err }, "❌ Error creando conversación");
     res.status(500).json({ error: "No se pudo crear la conversación", detalle: err.message });
   }
 }
 
-/**
- * GET /generacion/conversacion/:id
- * Obtiene el historial de una conversación
- */
 async function getConversacionHandler(req, res) {
   try {
     const { id } = req.params;
-
-    const [conversacion] = await consultar(`
-      SELECT id, titulo, contexto_inicial, creado_en FROM conversaciones WHERE id = ?
-    `, [id]);
-
-    if (!conversacion) {
-      return res.status(404).json({ error: "Conversación no encontrada" });
-    }
+    const [conversacion] = await consultar(`SELECT id, titulo, contexto_inicial, creado_en FROM conversaciones WHERE id = ?`, [id]);
+    if (!conversacion) return res.status(404).json({ error: "Conversación no encontrada" });
 
     const mensajes = await consultar(`
       SELECT id, rol, contenido, metadatos, creado_en
-      FROM mensajes_conversacion
-      WHERE id_conversacion = ?
-      ORDER BY creado_en ASC
+      FROM mensajes_conversacion WHERE id_conversacion = ? ORDER BY creado_en ASC
     `, [id]);
 
     const operaciones = await consultar(`
       SELECT id, tipo_operacion, parametros, resultado, estado, creado_en
-      FROM operaciones_ia
-      WHERE id_conversacion = ?
-      ORDER BY creado_en DESC
+      FROM operaciones_ia WHERE id_conversacion = ? ORDER BY creado_en DESC
     `, [id]);
 
-    res.json({
-      ...conversacion,
-      mensajes,
-      operaciones
-    });
-
+    res.json({ ...conversacion, mensajes, operaciones });
   } catch (err) {
     logger.error({ err }, "❌ Error obteniendo conversación");
     res.status(500).json({ error: "No se pudo obtener la conversación", detalle: err.message });
   }
 }
 
-/**
- * GET /generacion/conversaciones
- * Lista todas las conversaciones
- */
 async function getConversacionesHandler(req, res) {
   try {
     const { id_usuario } = req.query;
-
     const conversaciones = await consultar(`
       SELECT c.id, c.titulo, c.creado_en, c.actualizado_en,
              COUNT(DISTINCT m.id) as num_mensajes,
@@ -492,111 +433,69 @@ async function getConversacionesHandler(req, res) {
       LEFT JOIN mensajes_conversacion m ON c.id = m.id_conversacion
       LEFT JOIN operaciones_ia o ON c.id = o.id_conversacion
       WHERE (? IS NULL OR c.id_usuario = ?)
-      GROUP BY c.id
-      ORDER BY c.actualizado_en DESC
-      LIMIT 50
-    `, [id_usuario, id_usuario]);
+      GROUP BY c.id ORDER BY c.actualizado_en DESC LIMIT 50
+    `, [id_usuario ?? null, id_usuario ?? null]);
 
     res.json(conversaciones);
-
   } catch (err) {
     logger.error({ err }, "❌ Error listando conversaciones");
     res.status(500).json({ error: "No se pudieron listar las conversaciones", detalle: err.message });
   }
 }
 
-/**
- * POST /generacion/excel/calificaciones
- * Genera Excel de calificaciones
- */
 async function generarExcelCalificacionesHandler(req, res) {
   try {
     const { curso_id, periodo_id } = req.body;
-
-    if (!curso_id || !periodo_id) {
-      return res.status(400).json({ error: "curso_id y periodo_id son requeridos" });
-    }
-
+    if (!curso_id || !periodo_id) return res.status(400).json({ error: "curso_id y periodo_id son requeridos" });
     const buffer = await generarExcelCalificaciones(curso_id, periodo_id);
-
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="calificaciones_${curso_id}_${periodo_id}.xlsx"`);
     res.send(buffer);
-
   } catch (err) {
     logger.error({ err }, "❌ Error generando Excel");
     res.status(500).json({ error: "Error generando Excel", detalle: err.message });
   }
 }
 
-/**
- * POST /generacion/pdf/boletin
- * Genera PDF boletín
- */
 async function generarPDFBoletinHandler(req, res) {
   try {
     const { estudiante_id, periodo_id } = req.body;
-
-    if (!estudiante_id || !periodo_id) {
-      return res.status(400).json({ error: "estudiante_id y periodo_id son requeridos" });
-    }
-
+    if (!estudiante_id || !periodo_id) return res.status(400).json({ error: "estudiante_id y periodo_id son requeridos" });
     const buffer = await generarPDFBoletin(estudiante_id, periodo_id);
-
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="boletin_${estudiante_id}_${periodo_id}.pdf"`);
     res.send(buffer);
-
   } catch (err) {
     logger.error({ err }, "❌ Error generando PDF");
     res.status(500).json({ error: "Error generando PDF", detalle: err.message });
   }
 }
 
-/**
- * POST /generacion/recomendaciones
- * Genera recomendaciones académicas
- */
 async function generarRecomendacionesHandler(req, res) {
   try {
     const { estudiante_id, periodo_id } = req.body;
-
-    if (!estudiante_id || !periodo_id) {
-      return res.status(400).json({ error: "estudiante_id y periodo_id son requeridos" });
-    }
-
+    if (!estudiante_id || !periodo_id) return res.status(400).json({ error: "estudiante_id y periodo_id son requeridos" });
     const recomendaciones = await generarRecomendaciones(estudiante_id, periodo_id);
-
     res.json(recomendaciones);
-
   } catch (err) {
     logger.error({ err }, "❌ Error generando recomendaciones");
     res.status(500).json({ error: "Error generando recomendaciones", detalle: err.message });
   }
 }
 
-/**
- * GET /generacion/descargar/:archivo
- * Descarga un archivo generado
- */
 function descargarArchivoHandler(req, res) {
   try {
     const { archivo } = req.params;
     const rutaArchivo = path.join(DOCS_DIR, archivo);
-
-    if (!fs.existsSync(rutaArchivo)) {
-      return res.status(404).json({ error: "Archivo no encontrado" });
-    }
-
+    if (!fs.existsSync(rutaArchivo)) return res.status(404).json({ error: "Archivo no encontrado" });
     res.download(rutaArchivo);
-
   } catch (err) {
     logger.error({ err }, "❌ Error descargando archivo");
     res.status(500).json({ error: "Error descargando archivo", detalle: err.message });
   }
 }
 
-/** ===== Rutas principales (sin prefijo porque el gateway ya envía a /generacion/*) ===== */
+// ── Rutas ─────────────────────────────────────────────────────────────────────
 router.post("/chat", postChatHandler);
 router.post("/conversacion", postConversacionHandler);
 router.get("/conversacion/:id", getConversacionHandler);
