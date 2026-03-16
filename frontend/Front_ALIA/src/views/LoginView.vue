@@ -105,7 +105,6 @@ async function handleSubmit() {
   if (!r.exito) {
     error.value = r.mensaje;
     cargando.value = false;
-    props.showToast("Error al iniciar sesión: " + r.mensaje);
   } else {
   }
 }

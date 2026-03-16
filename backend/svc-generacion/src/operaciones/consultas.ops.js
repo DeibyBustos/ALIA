@@ -1,10 +1,6 @@
 import { consultar } from '../../../libreria-compartida/src/db.js';
 import { logger } from '../../../libreria-compartida/src/logger.js';
 
-/**
- * Consulta las materias/asignaturas de un estudiante
- * Intención: "consultar_materias_estudiante"
- */
 export async function consultarMateriasEstudiante(parametros) {
   const { estudiante_nombre, periodo } = parametros;
 
@@ -16,7 +12,7 @@ export async function consultarMateriasEstudiante(parametros) {
     `, [`%${estudiante_nombre}%`]);
 
     if (estudiantes.length === 0) {
-      return { exito: false, mensaje: `No se encontró estudiante con nombre: ${estudiante_nombre}` };
+      return { exito: false, mensaje: `No se encontró ningún estudiante con el nombre "${estudiante_nombre}". Verifica que el nombre esté escrito correctamente.` };
     }
 
     const estudiante = estudiantes[0];
@@ -42,13 +38,13 @@ export async function consultarMateriasEstudiante(parametros) {
     if (materias.length === 0) {
       return {
         exito: false,
-        mensaje: `No se encontraron materias para ${estudiante.nombres} ${estudiante.apellidos}. Puede que no tenga inscripciones registradas.`
+        mensaje: `${estudiante.nombres} ${estudiante.apellidos} no tiene materias inscritas${periodo ? ` en el período ${periodo}` : ''}. Puede que no tenga inscripciones registradas en el sistema.`
       };
     }
 
     return {
       exito: true,
-      mensaje: `${estudiante.nombres} ${estudiante.apellidos} tiene ${materias.length} materia(s) registrada(s).`,
+      mensaje: `${estudiante.nombres} ${estudiante.apellidos} tiene ${materias.length} materia${materias.length > 1 ? 's' : ''} inscrita${materias.length > 1 ? 's' : ''} en el grado ${materias[0]?.grado}.`,
       datos: {
         estudiante: `${estudiante.nombres} ${estudiante.apellidos}`,
         grado: materias[0]?.grado,
@@ -57,15 +53,11 @@ export async function consultarMateriasEstudiante(parametros) {
     };
 
   } catch (err) {
-    logger.error({ err }, '❌ Error consultando materias del estudiante');
-    return { exito: false, mensaje: `Error: ${err.message}` };
+    logger.error({ err }, 'Error consultando materias del estudiante');
+    return { exito: false, mensaje: `Ocurrió un error al consultar las materias: ${err.message}` };
   }
 }
 
-/**
- * Consulta el acudiente de un estudiante
- * Intención: "consultar_acudiente"
- */
 export async function consultarAcudiente(parametros) {
   const { estudiante_nombre } = parametros;
 
@@ -77,7 +69,7 @@ export async function consultarAcudiente(parametros) {
     `, [`%${estudiante_nombre}%`]);
 
     if (estudiantes.length === 0) {
-      return { exito: false, mensaje: `No se encontró estudiante con nombre: ${estudiante_nombre}` };
+      return { exito: false, mensaje: `No se encontró ningún estudiante con el nombre "${estudiante_nombre}".` };
     }
 
     const estudiante = estudiantes[0];
@@ -97,13 +89,13 @@ export async function consultarAcudiente(parametros) {
     if (acudientes.length === 0) {
       return {
         exito: false,
-        mensaje: `No se encontraron acudientes registrados para ${estudiante.nombres} ${estudiante.apellidos}.`
+        mensaje: `No hay acudientes registrados para ${estudiante.nombres} ${estudiante.apellidos}.`
       };
     }
 
     return {
       exito: true,
-      mensaje: `Se encontraron ${acudientes.length} acudiente(s) para ${estudiante.nombres} ${estudiante.apellidos}.`,
+      mensaje: `${estudiante.nombres} ${estudiante.apellidos} tiene ${acudientes.length} acudiente${acudientes.length > 1 ? 's' : ''} registrado${acudientes.length > 1 ? 's' : ''}.`,
       datos: {
         estudiante: `${estudiante.nombres} ${estudiante.apellidos}`,
         documento: estudiante.documento,
@@ -112,15 +104,11 @@ export async function consultarAcudiente(parametros) {
     };
 
   } catch (err) {
-    logger.error({ err }, '❌ Error consultando acudiente');
-    return { exito: false, mensaje: `Error: ${err.message}` };
+    logger.error({ err }, 'Error consultando acudiente');
+    return { exito: false, mensaje: `Ocurrió un error al consultar el acudiente: ${err.message}` };
   }
 }
 
-/**
- * Consulta información general de un estudiante
- * Intención: "consultar_info_estudiante"
- */
 export async function consultarInfoEstudiante(parametros) {
   const { estudiante_nombre } = parametros;
 
@@ -132,12 +120,11 @@ export async function consultarInfoEstudiante(parametros) {
     `, [`%${estudiante_nombre}%`]);
 
     if (estudiantes.length === 0) {
-      return { exito: false, mensaje: `No se encontró estudiante con nombre: ${estudiante_nombre}` };
+      return { exito: false, mensaje: `No se encontró ningún estudiante con el nombre "${estudiante_nombre}".` };
     }
 
     const estudiante = estudiantes[0];
 
-    // Grado actual (matrícula activa más reciente)
     const [matriculaActual] = await consultar(`
       SELECT g.etiqueta AS grado, p.nombre AS periodo, p.anio, m.estado
       FROM matriculas m
@@ -150,7 +137,7 @@ export async function consultarInfoEstudiante(parametros) {
 
     return {
       exito: true,
-      mensaje: `Información de ${estudiante.nombres} ${estudiante.apellidos}.`,
+      mensaje: `Se encontró la información de ${estudiante.nombres} ${estudiante.apellidos}.`,
       datos: {
         estudiante: {
           nombre: `${estudiante.nombres} ${estudiante.apellidos}`,
@@ -162,15 +149,11 @@ export async function consultarInfoEstudiante(parametros) {
     };
 
   } catch (err) {
-    logger.error({ err }, '❌ Error consultando info estudiante');
-    return { exito: false, mensaje: `Error: ${err.message}` };
+    logger.error({ err }, 'Error consultando info estudiante');
+    return { exito: false, mensaje: `Ocurrió un error al consultar la información: ${err.message}` };
   }
 }
 
-/**
- * Consulta los estudiantes de un grado
- * Intención: "consultar_estudiantes_grado"
- */
 export async function consultarEstudiantesGrado(parametros) {
   const { grado, periodo } = parametros;
 
@@ -197,26 +180,22 @@ export async function consultarEstudiantesGrado(parametros) {
     if (estudiantes.length === 0) {
       return {
         exito: false,
-        mensaje: `No se encontraron estudiantes activos en el grado ${grado}.`
+        mensaje: `No se encontraron estudiantes con matrícula activa en el grado ${grado}${periodo ? ` para el período ${periodo}` : ''}.`
       };
     }
 
     return {
       exito: true,
-      mensaje: `Se encontraron ${estudiantes.length} estudiante(s) en el grado ${grado}.`,
+      mensaje: `El grado ${grado} tiene ${estudiantes.length} estudiante${estudiantes.length > 1 ? 's' : ''} con matrícula activa.`,
       datos: { grado, periodo: estudiantes[0]?.periodo, total: estudiantes.length, estudiantes }
     };
 
   } catch (err) {
-    logger.error({ err }, '❌ Error consultando estudiantes por grado');
-    return { exito: false, mensaje: `Error: ${err.message}` };
+    logger.error({ err }, 'Error consultando estudiantes por grado');
+    return { exito: false, mensaje: `Ocurrió un error al consultar los estudiantes: ${err.message}` };
   }
 }
 
-/**
- * Consulta el horario de un estudiante
- * Intención: "consultar_horario_estudiante"
- */
 export async function consultarHorarioEstudiante(parametros) {
   const { estudiante_nombre, periodo } = parametros;
 
@@ -228,7 +207,7 @@ export async function consultarHorarioEstudiante(parametros) {
     `, [`%${estudiante_nombre}%`]);
 
     if (estudiantes.length === 0) {
-      return { exito: false, mensaje: `No se encontró estudiante: ${estudiante_nombre}` };
+      return { exito: false, mensaje: `No se encontró ningún estudiante con el nombre "${estudiante_nombre}".` };
     }
 
     const estudiante = estudiantes[0];
@@ -254,9 +233,17 @@ export async function consultarHorarioEstudiante(parametros) {
       ORDER BY h.dia_semana, h.hora_inicio
     `, [estudiante.id, periodo ?? null, periodo ? `%${periodo}%` : null]);
 
+    if (horario.length === 0) {
+      return {
+        exito: true,
+        mensaje: `${estudiante.nombres} ${estudiante.apellidos} no tiene horario registrado${periodo ? ` para el período ${periodo}` : ''}.`,
+        datos: { estudiante: `${estudiante.nombres} ${estudiante.apellidos}`, horario: [] }
+      };
+    }
+
     return {
       exito: true,
-      mensaje: `Horario de ${estudiante.nombres} ${estudiante.apellidos}.`,
+      mensaje: `Se encontró el horario de ${estudiante.nombres} ${estudiante.apellidos} con ${horario.length} clase${horario.length > 1 ? 's' : ''} registrada${horario.length > 1 ? 's' : ''}.`,
       datos: {
         estudiante: `${estudiante.nombres} ${estudiante.apellidos}`,
         horario
@@ -264,7 +251,7 @@ export async function consultarHorarioEstudiante(parametros) {
     };
 
   } catch (err) {
-    logger.error({ err }, '❌ Error consultando horario');
-    return { exito: false, mensaje: `Error: ${err.message}` };
+    logger.error({ err }, 'Error consultando horario');
+    return { exito: false, mensaje: `Ocurrió un error al consultar el horario: ${err.message}` };
   }
 }

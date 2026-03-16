@@ -1,14 +1,10 @@
 import { consultar, ejecutar } from '../../../libreria-compartida/src/db.js';
 import { logger } from '../../../libreria-compartida/src/logger.js';
 
-/**
- * Inserta una calificación por lenguaje natural
- */
 export async function insertarCalificacion(parametros) {
   const { estudiante_nombre, asignatura, nota, evaluacion, periodo } = parametros;
 
   try {
-    // 1. Buscar estudiante por nombre
     const estudiantes = await consultar(`
       SELECT id, nombres, apellidos FROM estudiantes
       WHERE CONCAT(nombres, ' ', apellidos) LIKE ?
@@ -16,12 +12,11 @@ export async function insertarCalificacion(parametros) {
     `, [`%${estudiante_nombre}%`]);
 
     if (estudiantes.length === 0) {
-      return { exito: false, mensaje: `No se encontró estudiante con nombre: ${estudiante_nombre}` };
+      return { exito: false, mensaje: `No se encontró ningún estudiante con el nombre "${estudiante_nombre}". Verifica que el nombre esté escrito correctamente.` };
     }
 
     const estudiante = estudiantes[0];
 
-    // 2. Buscar el curso (asignatura + período)
     const cursos = await consultar(`
       SELECT c.id, a.nombre as asignatura
       FROM cursos c
@@ -33,20 +28,17 @@ export async function insertarCalificacion(parametros) {
     `, [`%${asignatura}%`, periodo, `%${periodo}%`]);
 
     if (cursos.length === 0) {
-      return { exito: false, mensaje: `No se encontró curso de ${asignatura}` };
+      return { exito: false, mensaje: `No se encontró la asignatura "${asignatura}"${periodo ? ` en el período "${periodo}"` : ''}. Verifica que esté registrada en el sistema.` };
     }
 
     const curso = cursos[0];
-
-    // 3. Buscar o crear evaluación
-    let evaluacionId;
     const evaluacionNombre = evaluacion || 'Evaluación General';
 
     const [evalExistente] = await consultar(`
-      SELECT id FROM evaluaciones
-      WHERE curso_id = ? AND nombre = ?
+      SELECT id FROM evaluaciones WHERE curso_id = ? AND nombre = ?
     `, [curso.id, evaluacionNombre]);
 
+    let evaluacionId;
     if (evalExistente) {
       evaluacionId = evalExistente.id;
     } else {
@@ -57,30 +49,26 @@ export async function insertarCalificacion(parametros) {
       evaluacionId = result.insertId;
     }
 
-    // 4. Insertar o actualizar calificación
     await ejecutar(`
       INSERT INTO calificaciones (evaluacion_id, estudiante_id, nota)
       VALUES (?, ?, ?)
       ON DUPLICATE KEY UPDATE nota = ?
     `, [evaluacionId, estudiante.id, nota, nota]);
 
-    logger.info({ estudiante, curso, nota }, '✅ Calificación insertada');
+    logger.info({ estudiante, curso, nota }, 'Calificación insertada');
 
     return {
       exito: true,
-      mensaje: `Calificación de ${nota} registrada para ${estudiante.nombres} ${estudiante.apellidos} en ${curso.asignatura}`,
+      mensaje: `Se registró una nota de ${nota} para ${estudiante.nombres} ${estudiante.apellidos} en ${curso.asignatura}, evaluación "${evaluacionNombre}".`,
       datos: { estudiante, asignatura: curso.asignatura, nota, evaluacion: evaluacionNombre }
     };
 
   } catch (err) {
-    logger.error({ err }, '❌ Error insertando calificación');
-    return { exito: false, mensaje: `Error: ${err.message}` };
+    logger.error({ err }, 'Error insertando calificación');
+    return { exito: false, mensaje: `Ocurrió un error al registrar la calificación: ${err.message}` };
   }
 }
 
-/**
- * Elimina una calificación
- */
 export async function eliminarCalificacion(parametros) {
   const { estudiante_nombre, asignatura, evaluacion } = parametros;
 
@@ -92,12 +80,11 @@ export async function eliminarCalificacion(parametros) {
     `, [`%${estudiante_nombre}%`]);
 
     if (estudiantes.length === 0) {
-      return { exito: false, mensaje: `No se encontró estudiante: ${estudiante_nombre}` };
+      return { exito: false, mensaje: `No se encontró ningún estudiante con el nombre "${estudiante_nombre}".` };
     }
 
     const estudiante = estudiantes[0];
 
-    // Buscar calificación
     const calificaciones = await consultar(`
       SELECT c.id, ev.nombre as evaluacion, a.nombre as asignatura
       FROM calificaciones c
@@ -110,30 +97,25 @@ export async function eliminarCalificacion(parametros) {
     `, [estudiante.id, `%${asignatura}%`, evaluacion, `%${evaluacion}%`]);
 
     if (calificaciones.length === 0) {
-      return { exito: false, mensaje: 'No se encontró la calificación especificada' };
+      return { exito: false, mensaje: `No se encontró ninguna calificación de ${asignatura}${evaluacion ? ` para la evaluación "${evaluacion}"` : ''} registrada para ${estudiante.nombres} ${estudiante.apellidos}.` };
     }
 
     const calificacion = calificaciones[0];
-
-    // Eliminar
     await ejecutar(`DELETE FROM calificaciones WHERE id = ?`, [calificacion.id]);
 
-    logger.info({ calificacion }, '🗑️ Calificación eliminada');
+    logger.info({ calificacion }, 'Calificación eliminada');
 
     return {
       exito: true,
-      mensaje: `Calificación eliminada: ${calificacion.evaluacion} de ${calificacion.asignatura}`
+      mensaje: `Se eliminó la calificación de ${calificacion.asignatura} (${calificacion.evaluacion}) para ${estudiante.nombres} ${estudiante.apellidos}.`
     };
 
   } catch (err) {
-    logger.error({ err }, '❌ Error eliminando calificación');
-    return { exito: false, mensaje: `Error: ${err.message}` };
+    logger.error({ err }, 'Error eliminando calificación');
+    return { exito: false, mensaje: `Ocurrió un error al eliminar la calificación: ${err.message}` };
   }
 }
 
-/**
- * Consulta calificaciones
- */
 export async function consultarCalificaciones(parametros) {
   const { estudiante_nombre, asignatura, periodo } = parametros;
 
@@ -144,7 +126,7 @@ export async function consultarCalificaciones(parametros) {
   `, [`%${estudiante_nombre}%`]);
 
   if (estudiantes.length === 0) {
-    return { exito: false, mensaje: `No se encontró estudiante: ${estudiante_nombre}` };
+    return { exito: false, mensaje: `No se encontró ningún estudiante con el nombre "${estudiante_nombre}".` };
   }
 
   const estudiante = estudiantes[0];
@@ -163,10 +145,22 @@ export async function consultarCalificaciones(parametros) {
     ORDER BY ev.fecha DESC
   `, [estudiante.id, asignatura, `%${asignatura}%`, periodo, `%${periodo}%`]);
 
+  if (calificaciones.length === 0) {
+    return {
+      exito: true,
+      mensaje: `No se encontraron calificaciones registradas para ${estudiante.nombres} ${estudiante.apellidos}${asignatura ? ` en ${asignatura}` : ''}${periodo ? ` durante el período ${periodo}` : ''}.`,
+      datos: { estudiante: `${estudiante.nombres} ${estudiante.apellidos}`, calificaciones: [] }
+    };
+  }
+
+  const promedio = (calificaciones.reduce((s, c) => s + Number(c.nota), 0) / calificaciones.length).toFixed(2);
+
   return {
     exito: true,
+    mensaje: `${estudiante.nombres} ${estudiante.apellidos} tiene ${calificaciones.length} calificación${calificaciones.length > 1 ? 'es' : ''} registrada${calificaciones.length > 1 ? 's' : ''}, con un promedio de ${promedio}.`,
     datos: {
       estudiante: `${estudiante.nombres} ${estudiante.apellidos}`,
+      promedio: Number(promedio),
       calificaciones
     }
   };

@@ -61,17 +61,13 @@
             </div>
           </div>
 
-          <div class="upload-field">
-            <label class="field-label">Título <span class="optional">(opcional)</span></label>
-            <input v-model="titulo" type="text" class="field-input" placeholder="Mi documento" />
-          </div>
 
           <div class="upload-field">
             <label class="field-label">Tipo de importación</label>
             <select v-model="tipoCarga" class="field-input">
-              <option value="">Solo RAG (sin importar)</option>
-              <option value="estudiantes">Importar estudiantes</option>
-              <option value="docentes">Importar docentes</option>
+              <option value="">Cargar Documentos</option>
+              <option value="estudiantes">Estudiantes</option>
+              <option value="docentes">Docentes</option>
             </select>
           </div>
 
@@ -85,10 +81,6 @@
         </div>
 
         <div class="upload-footer">
-          <div v-if="tipoCarga" class="tags-preview">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-            <code>{{ etiquetasAutoPreview }}</code>
-          </div>
           <button class="btn-upload" :disabled="subiendoArchivo || !archivoSeleccionado" @click="subirArchivo">
             <svg v-if="!subiendoArchivo" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <span class="spinner" v-else></span>
@@ -97,7 +89,7 @@
         </div>
 
         <div v-if="uploadStatus" :class="['upload-status', uploadStatus.ok ? 'status-ok' : 'status-bad']">
-          {{ uploadStatus.ok ? '✅' : '❌' }} {{ uploadStatus.msg }}
+          {{ uploadStatus.ok ? '' : '' }} {{ uploadStatus.msg }}
         </div>
       </div>
     </transition>
@@ -132,13 +124,9 @@
             <div v-if="!contenidoNormalizado(m.contenido)" class="muted-text">Sin respuesta</div>
             <template v-else-if="contenidoNormalizado(m.contenido).exito !== undefined">
               <div :class="['bot-status', contenidoNormalizado(m.contenido).exito ? 'bot-status--ok' : 'bot-status--bad']">
-                {{ contenidoNormalizado(m.contenido).exito ? '✅' : '❌' }}
+                {{ contenidoNormalizado(m.contenido).exito ? '' : '' }}
                 {{ contenidoNormalizado(m.contenido).mensaje }}
               </div>
-              <details v-if="contenidoNormalizado(m.contenido).datos" class="bot-details">
-                <summary>Ver detalles</summary>
-                <pre>{{ JSON.stringify(contenidoNormalizado(m.contenido).datos, null, 2) }}</pre>
-              </details>
               <a v-if="contenidoNormalizado(m.contenido).archivo" :href="descargaUrl(m.contenido)" target="_blank" class="download-btn">
                 📄 Descargar {{ contenidoNormalizado(m.contenido).archivo.tipo }}
               </a>
@@ -168,7 +156,7 @@
       <textarea
         v-model="mensaje"
         @keydown="onKeyDownMensaje"
-        placeholder="Escribe tu mensaje... (Enter para enviar, Shift+Enter para nueva línea)"
+        placeholder="Escribe tu mensaje..."
         class="chat-textarea"
         :disabled="cargando"
         rows="1"
@@ -188,6 +176,7 @@
 import { ref, computed, nextTick, watch, onMounted } from "vue";
 
 const props = defineProps({
+  mensajeInicial: { type: String, default: '' },
   base: { type: String, required: true },
   showToast: { type: Function, default: (msg) => console.log(msg) },
   auth: { type: Object, default: null },
@@ -216,10 +205,9 @@ const uploadStatus = ref(null);
 
 // ── Sugerencias ───────────────────────────────────────────────
 const sugerencias = [
-  "📊 Ver estadísticas generales",
-  "📄 Generar reporte Excel",
-  "✏️ Agregar calificación",
-  "📚 Buscar en documentos",
+  "Generar reporte Excel",
+  "Agregar calificación",
+  "Buscar en documentos",
 ];
 
 // ── Computed ──────────────────────────────────────────────────
@@ -395,6 +383,7 @@ watch(() => baseNormalizada.value, () => {
 
 onMounted(() => {
   if (baseNormalizada.value) cargarConversaciones();
+  if (props.mensajeInicial) mensaje.value = props.mensajeInicial;
 });
 </script>
 

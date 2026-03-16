@@ -127,7 +127,7 @@ async function postDocumentoHandler(req, res) {
     logger.info({ 
       id_documento, 
       etiquetasGuardadas: docGuardado?.etiquetas 
-    }, "✅ Documento insertado, verificando etiquetas");
+    }, "Documento insertado, verificando etiquetas");
 
     const t = await ejecutar(
       `INSERT INTO tareas_ingesta (id_documento, estado, mensaje_error)

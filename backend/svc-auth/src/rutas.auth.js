@@ -158,7 +158,7 @@ router.post('/registro', async (req, res) => {
           [usuarioId, rolData[0].id]
         );
       } else {
-        logger.warn({ nombreRol }, '⚠️ Rol no encontrado, se omite');
+        logger.warn({ nombreRol }, 'Rol no encontrado, se omite');
       }
     }
 
@@ -180,7 +180,7 @@ router.post('/registro', async (req, res) => {
     });
 
   } catch (err) {
-    logger.error({ err }, '❌ Error en registro');
+    logger.error({ err }, 'Error en registro');
     res.status(500).json({
       error: 'Error interno del servidor'
     });
@@ -240,7 +240,7 @@ router.get('/me', verificarToken, async (req, res) => {
     });
 
   } catch (err) {
-    logger.error({ err }, '❌ Error obteniendo datos de usuario');
+    logger.error({ err }, 'Error obteniendo datos de usuario');
     res.status(500).json({
       error: 'Error interno del servidor'
     });

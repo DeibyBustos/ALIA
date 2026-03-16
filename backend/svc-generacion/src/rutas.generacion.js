@@ -36,7 +36,6 @@ import {
   consultarAsistencias
 } from "./operaciones/asistencias.ops.js";
 
-// ── NUEVOS HANDLERS DE CONSULTA ──────────────────────────────────────────────
 import {
   consultarMateriasEstudiante,
   consultarAcudiente,
@@ -53,13 +52,10 @@ import { ContextoManager } from "./chat/contexto.manager.js";
 
 const router = express.Router();
 
-// Directorio para almacenar documentos generados
 const DOCS_DIR = path.join(process.cwd(), '..', 'storage', 'generados');
 if (!fs.existsSync(DOCS_DIR)) {
   fs.mkdirSync(DOCS_DIR, { recursive: true });
 }
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function guardarArchivo(buffer, nombreArchivo) {
   if (!fs.existsSync(DOCS_DIR)) fs.mkdirSync(DOCS_DIR, { recursive: true });
@@ -73,10 +69,6 @@ function guardarArchivo(buffer, nombreArchivo) {
   };
 }
 
-/**
- * POST /generacion/chat
- * Endpoint principal: procesa mensaje en lenguaje natural y ejecuta acciones
- */
 async function postChatHandler(req, res) {
   try {
     const { mensaje, id_conversacion } = req.body;
@@ -85,7 +77,7 @@ async function postChatHandler(req, res) {
       return res.status(400).json({ error: "Campo 'mensaje' es requerido" });
     }
 
-    logger.info({ mensaje, id_conversacion }, "💬 Mensaje recibido");
+    logger.info({ mensaje, id_conversacion }, "Mensaje recibido");
 
     // 1. Crear o cargar contexto
     const contextoMgr = new ContextoManager(id_conversacion);
@@ -93,12 +85,11 @@ async function postChatHandler(req, res) {
 
     // 2. Analizar intención
     const intencion = await analizarIntencion(mensaje);
-  console.log('>>> INTENCION RAW:', JSON.stringify(intencion));
-    logger.info({ intencion }, "🎯 Intención detectada");
+    logger.info({ intencion }, "Intención detectada");
 
     // 3. Extraer parámetros
     const parametros = await extraerParametros(mensaje, intencion);
-    logger.info({ parametros }, "📊 Parámetros extraídos");
+    logger.info({ parametros }, "Parámetros extraídos");
 
     // 4. Ejecutar acción según intención
     let respuesta = null;
@@ -106,7 +97,7 @@ async function postChatHandler(req, res) {
 
     switch (intencion) {
 
-      // ── OPERACIONES DE ESCRITURA ────────────────────────────────────────────
+      // ── OPERACIONES DE ESCRITURA ──────────────────────────────────────────
 
       case 'insertar_calificacion':
         respuesta = await insertarCalificacion(parametros);
@@ -120,7 +111,7 @@ async function postChatHandler(req, res) {
         respuesta = await insertarAsistencia(parametros);
         break;
 
-      // ── CONSULTAS A LA BD ───────────────────────────────────────────────────
+      // ── CONSULTAS A LA BD ─────────────────────────────────────────────────
 
       case 'consultar_notas':
         respuesta = await consultarCalificaciones(parametros);
@@ -131,22 +122,21 @@ async function postChatHandler(req, res) {
         break;
 
       case 'consultar_estudiantes_grado': {
-        // Primero intenta con el handler nuevo (soporta periodo flexible)
-        // Si no viene grado, pide aclaración
         if (!parametros.grado) {
           respuesta = {
             exito: false,
-            mensaje: "Necesito el grado para consultar los estudiantes (ej: 6A, 7B)"
+            mensaje: "Necesito el grado para consultar los estudiantes. Indícame el grado, por ejemplo: 6A o 7B."
           };
           break;
         }
         respuesta = await consultarEstudiantesGrado(parametros);
-        // Si el handler devuelve lista, formatear como mensaje natural
         if (respuesta.exito && respuesta.datos?.estudiantes?.length) {
           const { estudiantes, grado, total } = respuesta.datos;
-          let msg = `En el grado ${grado} hay ${total} estudiante${total === 1 ? '' : 's'} matriculado${total === 1 ? '' : 's'}:\n\n`;
+          let msg = `El grado ${grado} tiene ${total} estudiante${total === 1 ? '' : 's'} matriculado${total === 1 ? '' : 's'}:\n\n`;
           estudiantes.forEach((e, i) => {
-            msg += `${i + 1}. ${e.nombres} ${e.apellidos}${e.documento ? ` (Doc: ${e.documento})` : ''}\n`;
+            msg += `${i + 1}. ${e.nombres} ${e.apellidos}`;
+            if (e.documento) msg += ` — Documento: ${e.documento}`;
+            msg += '\n';
           });
           respuesta.mensaje = msg.trim();
         }
@@ -159,14 +149,13 @@ async function postChatHandler(req, res) {
           break;
         }
         respuesta = await consultarMateriasEstudiante(parametros);
-        // Formatear respuesta como texto natural
         if (respuesta.exito && respuesta.datos?.materias?.length) {
           const { estudiante, grado, materias } = respuesta.datos;
-          let msg = `📚 ${estudiante} (Grado ${grado}) tiene las siguientes materias:\n\n`;
+          let msg = `${estudiante} (Grado ${grado}) tiene las siguientes materias inscritas:\n\n`;
           materias.forEach((m, i) => {
             msg += `${i + 1}. ${m.asignatura}`;
             if (m.docente) msg += ` — Docente: ${m.docente}`;
-            msg += `\n`;
+            msg += '\n';
           });
           respuesta.mensaje = msg.trim();
         }
@@ -182,15 +171,15 @@ async function postChatHandler(req, res) {
           const { estudiante, acudientes } = respuesta.datos;
           let msg = '';
           acudientes.forEach((a) => {
-            msg += `El acudiente de ${estudiante} se llama ${a.nombres} ${a.apellidos}`;
-            if (a.relacion) msg += `, quien es su ${a.relacion.toLowerCase()}`;
+            msg += `El acudiente de ${estudiante} es ${a.nombres} ${a.apellidos}`;
+            if (a.relacion) msg += `, ${a.relacion.toLowerCase()}`;
             msg += '.';
             if (a.telefono && a.correo) {
-              msg += ` Su número registrado es ${a.telefono} y su correo es ${a.correo}.`;
+              msg += ` Teléfono: ${a.telefono}. Correo: ${a.correo}.`;
             } else if (a.telefono) {
-              msg += ` Su número registrado es ${a.telefono}.`;
+              msg += ` Teléfono: ${a.telefono}.`;
             } else if (a.correo) {
-              msg += ` Su correo registrado es ${a.correo}.`;
+              msg += ` Correo: ${a.correo}.`;
             }
             msg += '\n\n';
           });
@@ -206,12 +195,13 @@ async function postChatHandler(req, res) {
         respuesta = await consultarInfoEstudiante(parametros);
         if (respuesta.exito && respuesta.datos) {
           const { estudiante, matricula_actual } = respuesta.datos;
-          let msg = `🎓 ${estudiante.nombre}\n`;
-          if (estudiante.documento) msg += `📋 Documento: ${estudiante.documento}\n`;
-          if (estudiante.fecha_nacimiento) msg += `🎂 Nacimiento: ${estudiante.fecha_nacimiento}\n`;
+          let msg = `Estudiante: ${estudiante.nombre}\n`;
+          if (estudiante.documento)        msg += `Documento: ${estudiante.documento}\n`;
+          if (estudiante.fecha_nacimiento) msg += `Fecha de nacimiento: ${estudiante.fecha_nacimiento}\n`;
           if (matricula_actual) {
-            msg += `\n📍 Matrícula actual:\n`;
-            msg += `   Grado: ${matricula_actual.grado} | Período: ${matricula_actual.periodo} ${matricula_actual.anio} | Estado: ${matricula_actual.estado}`;
+            msg += `\nMatrícula actual: Grado ${matricula_actual.grado}, período ${matricula_actual.periodo} ${matricula_actual.anio}, estado ${matricula_actual.estado.toLowerCase()}.`;
+          } else {
+            msg += '\nNo tiene matrícula activa registrada.';
           }
           respuesta.mensaje = msg.trim();
         }
@@ -226,70 +216,70 @@ async function postChatHandler(req, res) {
         if (respuesta.exito && respuesta.datos?.horario?.length) {
           const dias = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
           const { estudiante, horario } = respuesta.datos;
-          let msg = `🗓️ Horario de ${estudiante}:\n\n`;
+          let msg = `Horario de ${estudiante}:\n\n`;
           for (const h of horario) {
             const dia = dias[h.dia_semana] || `Día ${h.dia_semana}`;
-            msg += `${dia} ${h.hora_inicio}–${h.hora_fin}: ${h.asignatura}`;
-            if (h.aula) msg += ` (${h.aula})`;
-            if (h.docente) msg += ` — ${h.docente}`;
+            msg += `${dia} de ${h.hora_inicio} a ${h.hora_fin}: ${h.asignatura}`;
+            if (h.aula)    msg += ` — Aula: ${h.aula}`;
+            if (h.docente) msg += ` — Docente: ${h.docente}`;
             msg += '\n';
           }
           respuesta.mensaje = msg.trim();
         }
         break;
 
-      // ── GENERACIÓN DE ARCHIVOS ──────────────────────────────────────────────
+      // ── GENERACIÓN DE ARCHIVOS ────────────────────────────────────────────
 
       case 'generar_excel_estudiantes':
         if (!parametros.grado) {
-          respuesta = { exito: false, mensaje: "Necesito el grado para generar el Excel de estudiantes (ej: 6A, 7B)" };
+          respuesta = { exito: false, mensaje: "Necesito el grado para generar el Excel de estudiantes. Indícame el grado, por ejemplo: 6A o 7B." };
         } else {
           const buffer = await generarExcelEstudiantes(parametros.grado, parametros.periodo_id || 1);
           archivoGenerado = guardarArchivo(buffer, `estudiantes_${parametros.grado}_${Date.now()}.xlsx`);
-          respuesta = { exito: true, mensaje: `✅ Excel de estudiantes del grado ${parametros.grado} generado exitosamente`, archivo: archivoGenerado };
+          respuesta = { exito: true, mensaje: `Se generó el Excel de estudiantes del grado ${parametros.grado}.`, archivo: archivoGenerado };
         }
         break;
 
       case 'generar_pdf_estudiantes':
         if (!parametros.grado) {
-          respuesta = { exito: false, mensaje: "Necesito el grado para generar el PDF de estudiantes (ej: 6A, 7B)" };
+          respuesta = { exito: false, mensaje: "Necesito el grado para generar el PDF de estudiantes. Indícame el grado, por ejemplo: 6A o 7B." };
         } else {
           const buffer = await generarPDFEstudiantes(parametros.grado, parametros.periodo_id || 1);
           archivoGenerado = guardarArchivo(buffer, `estudiantes_${parametros.grado}_${Date.now()}.pdf`);
-          respuesta = { exito: true, mensaje: `✅ PDF de estudiantes del grado ${parametros.grado} generado exitosamente`, archivo: archivoGenerado };
+          respuesta = { exito: true, mensaje: `Se generó el PDF de estudiantes del grado ${parametros.grado}.`, archivo: archivoGenerado };
         }
         break;
 
       case 'generar_excel_calificaciones':
         if (!parametros.curso_id || !parametros.periodo_id) {
-          respuesta = { exito: false, mensaje: "Necesito el curso_id y periodo_id para generar el Excel" };
+          respuesta = { exito: false, mensaje: "Necesito el curso y el período para generar el Excel de calificaciones." };
         } else {
           const buffer = await generarExcelCalificaciones(parametros.curso_id, parametros.periodo_id);
           archivoGenerado = guardarArchivo(buffer, `calificaciones_${Date.now()}.xlsx`);
-          respuesta = { exito: true, mensaje: "✅ Excel de calificaciones generado exitosamente", archivo: archivoGenerado };
+          respuesta = { exito: true, mensaje: "Se generó el Excel de calificaciones.", archivo: archivoGenerado };
         }
         break;
 
       case 'generar_pdf_boletin':
         if (!parametros.estudiante_id || !parametros.periodo_id) {
-          respuesta = { exito: false, mensaje: "Necesito el estudiante_id y periodo_id para generar el boletín" };
+          respuesta = { exito: false, mensaje: "Necesito el estudiante y el período para generar el boletín." };
         } else {
           const buffer = await generarPDFBoletin(parametros.estudiante_id, parametros.periodo_id);
           archivoGenerado = guardarArchivo(buffer, `boletin_${Date.now()}.pdf`);
-          respuesta = { exito: true, mensaje: "✅ Boletín PDF generado exitosamente", archivo: archivoGenerado };
+          respuesta = { exito: true, mensaje: "Se generó el boletín en PDF.", archivo: archivoGenerado };
         }
         break;
 
       case 'recomendar':
         if (!parametros.estudiante_id || !parametros.periodo_id) {
-          respuesta = { exito: false, mensaje: "Necesito el estudiante_id y periodo_id para generar recomendaciones" };
+          respuesta = { exito: false, mensaje: "Necesito el estudiante y el período para generar recomendaciones." };
         } else {
           const recomendaciones = await generarRecomendaciones(parametros.estudiante_id, parametros.periodo_id);
           respuesta = { exito: true, datos: recomendaciones };
         }
         break;
 
-      // ── FALLBACK ────────────────────────────────────────────────────────────
+      // ── FALLBACK ──────────────────────────────────────────────────────────
 
       case 'consulta_general':
       default:
@@ -335,15 +325,11 @@ async function postChatHandler(req, res) {
     res.json({ mensaje, intencion, parametros, respuesta, id_conversacion });
 
   } catch (err) {
-    logger.error({ err, stack: err.stack }, "❌ Error en chat handler");
+    logger.error({ err, stack: err.stack }, "Error en chat handler");
     res.status(500).json({ error: "Error procesando mensaje", detalle: err.message });
   }
 }
 
-/**
- * Procesa consulta general usando RAG + historial
- * Solo para preguntas que no involucran datos específicos de la BD
- */
 async function procesarConsultaGeneral(pregunta, contextoMgr) {
   try {
     const historial = await contextoMgr.obtenerHistorial(5);
@@ -352,9 +338,9 @@ async function procesarConsultaGeneral(pregunta, contextoMgr) {
     const mensajes = [
       {
         role: 'system',
-        content: `Eres un asistente académico del sistema ALIA. Tienes acceso a información académica de estudiantes, docentes, calificaciones y asistencias. 
+        content: `Eres un asistente académico del sistema ALIA. Tienes acceso a información académica de estudiantes, docentes, calificaciones y asistencias.
 ${resumenContexto}
-Si el usuario pregunta sobre datos específicos de un estudiante, acudiente, materias o notas, indícale que puedes consultar esa información directamente si te da el nombre del estudiante.`
+Responde de forma clara, directa y en español. No uses emojis. Si el usuario pregunta sobre datos específicos de un estudiante, indícale que puedes consultar esa información si te proporciona el nombre del estudiante.`
       },
       ...historial.map(h => ({
         role: h.rol === 'user' ? 'user' : 'assistant',
@@ -377,12 +363,12 @@ Si el usuario pregunta sobre datos específicos de un estudiante, acudiente, mat
     };
 
   } catch (err) {
-    logger.error({ err }, "❌ Error en consulta general");
-    return { exito: false, mensaje: "No pude procesar tu pregunta en este momento" };
+    logger.error({ err }, "Error en consulta general");
+    return { exito: false, mensaje: "No fue posible procesar la consulta en este momento. Intenta de nuevo." };
   }
 }
 
-// ── REST DE RUTAS (sin cambios) ───────────────────────────────────────────────
+// ── Handlers de rutas ─────────────────────────────────────────────────────────
 
 async function postConversacionHandler(req, res) {
   try {
@@ -394,7 +380,7 @@ async function postConversacionHandler(req, res) {
 
     res.status(201).json({ id_conversacion: result.insertId, titulo: titulo || "Nueva conversación" });
   } catch (err) {
-    logger.error({ err }, "❌ Error creando conversación");
+    logger.error({ err }, "Error creando conversación");
     res.status(500).json({ error: "No se pudo crear la conversación", detalle: err.message });
   }
 }
@@ -417,7 +403,7 @@ async function getConversacionHandler(req, res) {
 
     res.json({ ...conversacion, mensajes, operaciones });
   } catch (err) {
-    logger.error({ err }, "❌ Error obteniendo conversación");
+    logger.error({ err }, "Error obteniendo conversación");
     res.status(500).json({ error: "No se pudo obtener la conversación", detalle: err.message });
   }
 }
@@ -438,7 +424,7 @@ async function getConversacionesHandler(req, res) {
 
     res.json(conversaciones);
   } catch (err) {
-    logger.error({ err }, "❌ Error listando conversaciones");
+    logger.error({ err }, "Error listando conversaciones");
     res.status(500).json({ error: "No se pudieron listar las conversaciones", detalle: err.message });
   }
 }
@@ -452,7 +438,7 @@ async function generarExcelCalificacionesHandler(req, res) {
     res.setHeader('Content-Disposition', `attachment; filename="calificaciones_${curso_id}_${periodo_id}.xlsx"`);
     res.send(buffer);
   } catch (err) {
-    logger.error({ err }, "❌ Error generando Excel");
+    logger.error({ err }, "Error generando Excel");
     res.status(500).json({ error: "Error generando Excel", detalle: err.message });
   }
 }
@@ -466,7 +452,7 @@ async function generarPDFBoletinHandler(req, res) {
     res.setHeader('Content-Disposition', `attachment; filename="boletin_${estudiante_id}_${periodo_id}.pdf"`);
     res.send(buffer);
   } catch (err) {
-    logger.error({ err }, "❌ Error generando PDF");
+    logger.error({ err }, "Error generando PDF");
     res.status(500).json({ error: "Error generando PDF", detalle: err.message });
   }
 }
@@ -478,7 +464,7 @@ async function generarRecomendacionesHandler(req, res) {
     const recomendaciones = await generarRecomendaciones(estudiante_id, periodo_id);
     res.json(recomendaciones);
   } catch (err) {
-    logger.error({ err }, "❌ Error generando recomendaciones");
+    logger.error({ err }, "Error generando recomendaciones");
     res.status(500).json({ error: "Error generando recomendaciones", detalle: err.message });
   }
 }
@@ -490,7 +476,7 @@ function descargarArchivoHandler(req, res) {
     if (!fs.existsSync(rutaArchivo)) return res.status(404).json({ error: "Archivo no encontrado" });
     res.download(rutaArchivo);
   } catch (err) {
-    logger.error({ err }, "❌ Error descargando archivo");
+    logger.error({ err }, "Error descargando archivo");
     res.status(500).json({ error: "Error descargando archivo", detalle: err.message });
   }
 }
@@ -504,5 +490,129 @@ router.post("/excel/calificaciones", generarExcelCalificacionesHandler);
 router.post("/pdf/boletin", generarPDFBoletinHandler);
 router.post("/recomendaciones", generarRecomendacionesHandler);
 router.get("/descargar/:archivo", descargarArchivoHandler);
+
+// ── Estadísticas ──────────────────────────────────────────────────────────────
+
+router.get("/estadisticas/resumen", async (_req, res) => {
+  try {
+    const [[est], [doc], [grd], [asig], [asis], [docs]] = await Promise.all([
+      consultar("SELECT COUNT(DISTINCT estudiante_id) AS total FROM matriculas WHERE estado = 'ACTIVA'"),
+      consultar("SELECT COUNT(*) AS total FROM docentes"),
+      consultar("SELECT COUNT(DISTINCT grado_id) AS total FROM matriculas WHERE estado = 'ACTIVA'"),
+      consultar("SELECT COUNT(*) AS total FROM asignaturas"),
+      consultar("SELECT COUNT(*) AS total FROM asistencias WHERE fecha >= DATE_FORMAT(CURDATE(), '%Y-%m-01')"),
+      consultar("SELECT COUNT(*) AS total FROM documentos WHERE activo = 1"),
+    ]);
+    res.json({ ok: true, data: {
+      estudiantes:  est.total,
+      docentes:     doc.total,
+      grados:       grd.total,
+      asignaturas:  asig.total,
+      asistencias:  asis.total,
+      documentos:   docs.total,
+    }});
+  } catch (err) {
+    logger.error({ err }, "Error estadisticas/resumen");
+    res.status(500).json({ error: "Error obteniendo resumen" });
+  }
+});
+
+router.get("/estadisticas/asistencias-por-estado", async (_req, res) => {
+  try {
+    const rows = await consultar(`
+      SELECT estado, COUNT(*) AS total
+      FROM asistencias
+      GROUP BY estado
+      ORDER BY total DESC
+    `);
+    res.json({ ok: true, data: rows });
+  } catch (err) {
+    logger.error({ err }, "Error estadisticas/asistencias-por-estado");
+    res.status(500).json({ error: "Error obteniendo asistencias por estado" });
+  }
+});
+
+router.get("/estadisticas/promedio-por-grado", async (_req, res) => {
+  try {
+    const rows = await consultar(`
+      SELECT
+        g.etiqueta              AS grado,
+        ROUND(AVG(cal.nota), 2) AS promedio,
+        COUNT(cal.id)           AS total_notas
+      FROM calificaciones cal
+      JOIN evaluaciones ev ON ev.id = cal.evaluacion_id
+      JOIN cursos c        ON c.id  = ev.curso_id
+      JOIN grados g        ON g.id  = c.grado_id
+      GROUP BY g.id, g.etiqueta
+      ORDER BY g.grado_numero, g.seccion
+    `);
+    res.json({ ok: true, data: rows });
+  } catch (err) {
+    logger.error({ err }, "Error estadisticas/promedio-por-grado");
+    res.status(500).json({ error: "Error obteniendo promedios por grado" });
+  }
+});
+
+router.get("/estadisticas/estudiantes-por-grado", async (_req, res) => {
+  try {
+    const rows = await consultar(`
+      SELECT
+        g.etiqueta                      AS grado,
+        COUNT(DISTINCT m.estudiante_id) AS total
+      FROM matriculas m
+      JOIN grados g ON g.id = m.grado_id
+      WHERE m.estado = 'ACTIVA'
+      GROUP BY g.etiqueta
+      ORDER BY MIN(g.grado_numero), MIN(g.seccion)
+    `);
+    res.json({ ok: true, data: rows });
+  } catch (err) {
+    logger.error({ err }, "Error estadisticas/estudiantes-por-grado");
+    res.status(500).json({ error: "Error obteniendo estudiantes por grado" });
+  }
+});
+
+router.get("/estadisticas/top-asignaturas", async (_req, res) => {
+  try {
+    const rows = await consultar(`
+      SELECT
+        a.nombre                AS asignatura,
+        ROUND(AVG(cal.nota), 2) AS promedio,
+        COUNT(cal.id)           AS total_notas
+      FROM calificaciones cal
+      JOIN evaluaciones ev ON ev.id = cal.evaluacion_id
+      JOIN cursos c        ON c.id  = ev.curso_id
+      JOIN asignaturas a   ON a.id  = c.asignatura_id
+      GROUP BY a.id, a.nombre
+      HAVING total_notas >= 1
+      ORDER BY promedio DESC
+      LIMIT 10
+    `);
+    res.json({ ok: true, data: rows });
+  } catch (err) {
+    logger.error({ err }, "Error estadisticas/top-asignaturas");
+    res.status(500).json({ error: "Error obteniendo top asignaturas" });
+  }
+});
+
+router.get("/estadisticas/asistencias-ultimos-dias", async (req, res) => {
+  try {
+    const dias = Math.min(parseInt(req.query.dias) || 30, 90);
+    const rows = await consultar(`
+      SELECT
+        DATE_FORMAT(fecha, '%Y-%m-%d') AS dia,
+        estado,
+        COUNT(*)                       AS total
+      FROM asistencias
+      WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      GROUP BY dia, estado
+      ORDER BY dia ASC
+    `, [dias]);
+    res.json({ ok: true, data: rows });
+  } catch (err) {
+    logger.error({ err }, "Error estadisticas/asistencias-ultimos-dias");
+    res.status(500).json({ error: "Error obteniendo asistencias recientes" });
+  }
+});
 
 export default router;

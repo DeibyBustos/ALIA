@@ -1,14 +1,10 @@
 <template>
   <div class="app-root">
-    <!-- ── Sidebar ── -->
     <aside :class="['sidebar', { expanded: isExpanded }]" @click="isExpanded = !isExpanded">
 
-      <!-- Logo: starburst igual al Figma -->
+  
       <div class="sidebar-logo">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c8d6e8" stroke-width="1.6">
-          <circle cx="12" cy="12" r="2.5"/>
-          <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
-        </svg>
+  <img :src="logoWMS" alt="Logo ALIA" class="sidebar-logo-img" />
       </div>
 
       <!-- Nav icons -->
@@ -23,9 +19,6 @@
           <span class="nav-label">{{ item.label }}</span>
         </button>
 
-        <!-- dots separadores visuales (igual Figma) -->
-        <span class="nav-dot" />
-        <span class="nav-dot" />
       </nav>
 
       <!-- Bottom: avatar + chevron + logout -->
@@ -50,19 +43,34 @@
 
     </aside>
 
-    <!-- ── Main content ── -->
     <main class="main-content">
       <AsistenteAcademico
         v-if="activeView === 'asistente'"
         :base="baseUrl"
         :showToast="showToast"
         :auth="auth"
+        :mensajeInicial="mensajeAsistente"
+        @vue:mounted="mensajeAsistente = ''"
       />
       <Documentos
         v-else-if="activeView === 'documentos'"
         :base="baseUrl"
         :showToast="showToast"
         :auth="auth"
+      />
+      <ConfiguracionView
+        v-else-if="activeView === 'configuracion'"
+        :auth="auth"
+        :base="baseUrl"
+        :showToast="showToast"
+        @ir-a="activeView = $event"
+        @ir-asistente="msg => { mensajeAsistente = msg }"
+      />
+      <Estadisticas
+        v-else-if="activeView === 'estadisticas'"
+        :base="baseUrl"
+        :auth="auth"
+        :showToast="showToast"
       />
       <div v-else class="view-placeholder">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1e2d42" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
@@ -76,6 +84,9 @@
 import { ref, computed, defineComponent, h } from "vue";
 import AsistenteAcademico from "@/components/features/AsistenteAcademico.vue";
 import Documentos from "@/components/features/Documentos.vue";
+import ConfiguracionView from "@/views/ConfiguracionView.vue";
+import Estadisticas from "@/components/features/Estadisticas.vue";
+import logoWMS from "@/assets/Logo_WMS.png";
 
 const props = defineProps({
   auth: { type: Object, required: true },
@@ -85,6 +96,7 @@ const props = defineProps({
 
 const activeView = ref("asistente");
 const isExpanded = ref(false);
+const mensajeAsistente = ref('');
 
 const nombreCorto = computed(() => {
   const nombre = props.auth?.user?.value?.nombre || props.auth?.user?.value?.correo || 'Usuario';
@@ -121,12 +133,7 @@ const IconStats = icon([
   ["line", { x1: "6", y1: "20", x2: "6", y2: "14" }],
   ["line", { x1: "2", y1: "20", x2: "22", y2: "20" }],
 ]);
-const IconCalendar = icon([
-  ["rect", { x: "3", y: "4", width: "18", height: "18", rx: "2" }],
-  ["line", { x1: "16", y1: "2", x2: "16", y2: "6" }],
-  ["line", { x1: "8", y1: "2", x2: "8", y2: "6" }],
-  ["line", { x1: "3", y1: "10", x2: "21", y2: "10" }],
-]);
+
 const IconSettings = icon([
   ["circle", { cx: "12", cy: "12", r: "3" }],
   ["path", { d: "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" }],
@@ -141,7 +148,6 @@ const navItems = [
   { id: "asistente",     label: "Asistente IA",   icon: IconChat },
   { id: "documentos",    label: "Documentos",      icon: IconDocs },
   { id: "estadisticas",  label: "Estadísticas",    icon: IconStats },
-  { id: "calendario",    label: "Calendario",      icon: IconCalendar },
   { id: "configuracion", label: "Configuración",   icon: IconSettings },
 ];
 </script>
@@ -180,10 +186,25 @@ const navItems = [
 }
 
 .sidebar-logo {
-  margin-bottom: 20px;
-  opacity: 0.85;
-  padding: 0 16px;
+  margin-bottom: 24px;
+  padding: 6px 12px 10px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.sidebar-logo-img {
+  width: 34px;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar.expanded .sidebar-logo-img {
+  width: 120px;
 }
 
 /* Nav */
@@ -201,14 +222,6 @@ const navItems = [
   align-items: flex-start;
 }
 
-.nav-dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #1a2535;
-  margin: 5px 0;
-  flex-shrink: 0;
-}
 
 .nav-btn {
   position: relative;
@@ -246,7 +259,7 @@ const navItems = [
   box-shadow: inset 0 0 0 1px rgba(74,158,255,0.12);
 }
 
-/* ── Labels (reemplaza tooltips) ─────────────────────────────── */
+/* ── Labels ──────────────────────────────────────────────────── */
 .nav-label {
   font-size: 13px;
   font-weight: 500;
@@ -264,17 +277,13 @@ const navItems = [
   max-width: 140px;
 }
 
-/* Email del usuario en el bottom */
 .user-email {
   font-size: 11.5px;
   font-weight: 400;
   color: #4a6280;
 }
 
-/* Tooltip (desactivado, reemplazado por nav-label) */
-.nav-tooltip {
-  display: none;
-}
+.nav-tooltip { display: none; }
 
 /* ── Bottom ──────────────────────────────────────────────────── */
 .sidebar-bottom {
@@ -333,9 +342,7 @@ const navItems = [
   transition: opacity 0.15s;
 }
 
-.sidebar.expanded .avatar-chevron {
-  display: none;
-}
+.sidebar.expanded .avatar-chevron { display: none; }
 
 .logout-btn { color: #1e2d40; margin-top: 2px; }
 .logout-btn:hover {
