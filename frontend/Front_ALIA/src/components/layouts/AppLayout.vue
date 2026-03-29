@@ -145,7 +145,7 @@ const IconLogout = icon([
 ]);
 
 const navItems = [
-  { id: "asistente",     label: "Asistente IA",   icon: IconChat },
+  { id: "asistente",     label: "Asistente",   icon: IconChat },
   { id: "documentos",    label: "Documentos",      icon: IconDocs },
   { id: "estadisticas",  label: "Estadísticas",    icon: IconStats },
   { id: "configuracion", label: "Configuración",   icon: IconSettings },

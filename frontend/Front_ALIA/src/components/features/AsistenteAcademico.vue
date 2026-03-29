@@ -10,12 +10,10 @@
         </div>
         <div>
           <h2 class="header-title">Asistente Académico</h2>
-          <p class="header-sub">IA · En línea</p>
         </div>
       </div>
 
       <div class="header-actions">
-        <!-- Conversación selector -->
         <select
           :value="idConversacion ?? ''"
           @change="onSeleccionConversacion"
@@ -33,7 +31,6 @@
           </svg>
         </button>
 
-        <!-- Toggle subir archivo -->
         <button class="btn-icon" :class="{ active: mostrarSubida }" @click="mostrarSubida = !mostrarSubida" title="Subir documento">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
@@ -42,7 +39,6 @@
       </div>
     </div>
 
-    <!-- Panel de subida (colapsable) -->
     <transition name="slide-down">
       <div v-if="mostrarSubida" class="upload-panel">
         <div class="upload-grid">
@@ -116,10 +112,8 @@
             <span>{{ m.rol === 'user' ? 'Tú' : 'Asistente' }}</span>
             <span v-if="m.intencion" class="intent-pill">{{ m.intencion }}</span>
           </div>
-          <!-- Contenido del mensaje: user -->
           <div v-if="m.rol === 'user'" class="message-text">{{ m.contenido }}</div>
 
-          <!-- Contenido del mensaje: bot -->
           <template v-else>
             <div v-if="!contenidoNormalizado(m.contenido)" class="muted-text">Sin respuesta</div>
             <template v-else-if="contenidoNormalizado(m.contenido).exito !== undefined">
@@ -128,7 +122,7 @@
                 {{ contenidoNormalizado(m.contenido).mensaje }}
               </div>
               <a v-if="contenidoNormalizado(m.contenido).archivo" :href="descargaUrl(m.contenido)" target="_blank" class="download-btn">
-                📄 Descargar {{ contenidoNormalizado(m.contenido).archivo.tipo }}
+                Descargar {{ contenidoNormalizado(m.contenido).archivo.tipo }}
               </a>
             </template>
             <div v-else-if="contenidoNormalizado(m.contenido).mensaje" class="message-text">
