@@ -1,10 +1,22 @@
 import { openai } from '../../../libreria-compartida/src/openai.js';
 import { logger } from '../../../libreria-compartida/src/logger.js';
+// ── NUEVO: importar el filtro de contexto educativo ───────────────────────────
+import { validarPregunta, RESPUESTA_FUERA_ALCANCE } from '../../../libreria-compartida/src/topicFilter.js';
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Detecta la intención del usuario usando IA
  */
 export async function analizarIntencion(mensaje) {
+
+  // ── NUEVO: bloquear mensajes fuera del contexto educativo ─────────────────
+  const { bloqueada, motivo } = validarPregunta(mensaje);
+  if (bloqueada) {
+    logger.warn({ mensaje, motivo }, '🚫 Mensaje bloqueado por topicFilter');
+    return 'fuera_de_alcance';
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const prompt = `Eres un asistente académico. Analiza el siguiente mensaje y determina la intención del usuario.
 
 Intenciones posibles:

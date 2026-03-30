@@ -1,8 +1,26 @@
-
 export const RESPUESTA_FUERA_ALCANCE =
   "Estoy diseñado exclusivamente para el entorno educativo escolar. " +
-  "Solo puedo ayudarte con preguntas relacionadas a materias y contenidos del colegio. " +
-  "¿Tienes alguna duda sobre tus estudios en la que pueda ayudarte?";
+  "Solo puedo ayudarte con preguntas relacionadas a la gestión académica del colegio: " +
+  "estudiantes, calificaciones, horarios, asistencias y documentos institucionales. " +
+  "¿En qué puedo ayudarte?";
+
+
+// ── NUEVO: términos del dominio de gestión escolar ────────────────────────────
+// Si el mensaje contiene cualquiera de estos, se permite sin revisar los filtros.
+const DOMINIO_EDUCATIVO = [
+  "estudiante", "alumno", "docente", "profesor", "coordinador",
+  "rector", "administrativo", "acudiente", "padre de familia", "tutor",
+  "calificacion", "nota", "boletin", "certificado", "matricula",
+  "grado", "grupo", "curso", "seccion", "jornada",
+  "planeacion", "plan de area", "asignatura", "materia",
+  "periodo", "trimestre", "bimestre", "evaluacion", "examen",
+  "asistencia", "inasistencia", "falta", "ausencia", "permiso",
+  "horario", "cronograma", "acta", "circular", "planilla",
+  "listado", "registro", "institucion", "colegio", "escuela", "sede",
+  "excel", "pdf", "word", "informe", "reporte", "generar",
+  "insertar", "eliminar", "consultar", "registrar",
+];
+// ─────────────────────────────────────────────────────────────────────────────
 
 
 const GRUPOS_PROHIBIDOS = {
@@ -27,7 +45,6 @@ const GRUPOS_PROHIBIDOS = {
   política_religión: [
     "partido político", "presidente", "elecciones", "votaciones",
     "dios", "religión", "iglesia", "ateísmo", "oración",
-
   ],
   noticias: [
     "últimas noticias", "noticia de hoy", "breaking news",
@@ -67,7 +84,7 @@ function normalizar(texto) {
   return texto
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, ""); 
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 function contienePalabraClave(textoNorm, palabras) {
@@ -81,6 +98,12 @@ export function validarPregunta(pregunta) {
   }
 
   const textoNorm = normalizar(pregunta.trim());
+
+  // ── NUEVO: si es del dominio educativo escolar, permitir siempre ──────────
+  if (contienePalabraClave(textoNorm, DOMINIO_EDUCATIVO)) {
+    return { bloqueada: false, motivo: null };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (contienePalabraClave(textoNorm, MATERIAS_ESCOLARES)) {
     return { bloqueada: false, motivo: null };
