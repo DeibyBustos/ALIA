@@ -26,23 +26,27 @@ export async function generarExcelEstudiantes(grado, periodoId) {
   logger.info({ grado: params.grado, periodoId: params.periodo_id }, '📊 Generando Excel de estudiantes');
 
   // 2. Obtener estudiantes del grado usando parámetros validados
-  const estudiantes = await consultar(`
-    SELECT
-      e.id,
-      e.nombres,
-      e.apellidos,
-      e.documento,
-      e.fecha_nacimiento,
-      g.etiqueta as grado,
-      CONCAT(a.nombres, ' ', a.apellidos) as acudiente
-    FROM estudiantes e
-    JOIN matriculas m ON m.estudiante_id = e.id
-    JOIN grados g ON g.id = m.grado_id
-    LEFT JOIN estudiante_acudiente ea ON ea.estudiante_id = e.id
-    LEFT JOIN acudientes a ON a.id = ea.acudiente_id
-    WHERE g.etiqueta = ? AND m.periodo_id = ?
-    ORDER BY e.apellidos, e.nombres
-  `, [params.grado, params.periodo_id]);
+const estudiantes = await consultar(`
+  SELECT DISTINCT
+    e.id,
+    e.nombres,
+    e.apellidos,
+    e.documento,
+    e.fecha_nacimiento,
+    g.etiqueta as grado,
+    (
+      SELECT CONCAT(a2.nombres, ' ', a2.apellidos)
+      FROM estudiante_acudiente ea2
+      JOIN acudientes a2 ON a2.id = ea2.acudiente_id
+      WHERE ea2.estudiante_id = e.id
+      LIMIT 1
+    ) as acudiente
+  FROM estudiantes e
+  JOIN matriculas m ON m.estudiante_id = e.id
+  JOIN grados g ON g.id = m.grado_id
+  WHERE g.etiqueta = ? AND m.periodo_id = ?
+  ORDER BY e.apellidos, e.nombres
+`, [params.grado, params.periodo_id]);
 
   if (estudiantes.length === 0) {
     throw new Error(`No se encontraron estudiantes en el grado ${params.grado} para el período ${params.periodo_id}`);
