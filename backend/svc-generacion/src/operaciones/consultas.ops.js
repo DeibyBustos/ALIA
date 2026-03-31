@@ -255,3 +255,82 @@ export async function consultarHorarioEstudiante(parametros) {
     return { exito: false, mensaje: `Ocurrió un error al consultar el horario: ${err.message}` };
   }
 }
+
+export async function consultarHorarioDocente(parametros) {
+  const { docente_nombre, curso, periodo, asignatura, dia_semana } = parametros;
+
+  try {
+    const docentes = await consultar(`
+      SELECT id, nombres, apellidos, correo
+      FROM docentes
+      WHERE CONCAT(nombres, ' ', apellidos) LIKE ?
+      LIMIT 5
+    `, [`%${docente_nombre}%`]);
+
+    if (docentes.length === 0) {
+      return {
+        exito: false,
+        mensaje: `No se encontró ningún docente con el nombre "${docente_nombre}".`
+      };
+    }
+
+    const docente = docentes[0];
+
+    const horario = await consultar(`
+      SELECT
+        a.nombre AS asignatura,
+        g.etiqueta AS curso,
+        p.nombre AS periodo,
+        p.anio,
+        h.dia_semana,
+        h.hora_inicio,
+        h.hora_fin,
+        au.codigo AS aula_codigo,
+        au.nombre AS aula_nombre
+      FROM cursos c
+      JOIN asignaturas a         ON a.id = c.asignatura_id
+      JOIN grados g              ON g.id = c.grado_id
+      JOIN periodos_academicos p ON p.id = c.periodo_id
+      LEFT JOIN horarios h       ON h.curso_id = c.id
+      LEFT JOIN aulas au         ON au.id = h.aula_id
+      WHERE c.docente_id = ?
+        AND (? IS NULL OR g.etiqueta LIKE ?)
+        AND (? IS NULL OR p.nombre LIKE ?)
+        AND (? IS NULL OR a.nombre LIKE ?)
+        AND (? IS NULL OR h.dia_semana = ?)
+      ORDER BY p.anio DESC, p.nombre, h.dia_semana, h.hora_inicio
+    `, [
+      docente.id,
+      curso ?? null, curso ? `%${curso}%` : null,
+      periodo ?? null, periodo ? `%${periodo}%` : null,
+      asignatura ?? null, asignatura ? `%${asignatura}%` : null,
+      dia_semana ?? null, dia_semana ?? null
+    ]);
+
+    if (horario.length === 0) {
+      return {
+        exito: false,
+        mensaje: `${docente.nombres} ${docente.apellidos} no tiene horarios registrados${
+          curso ? ` para el curso ${curso}` : ''
+        }${periodo ? ` en el período ${periodo}` : ''}.`
+      };
+    }
+
+    return {
+      exito: true,
+      mensaje: `Se encontró el horario de ${docente.nombres} ${docente.apellidos}.`,
+      datos: {
+        docente: `${docente.nombres} ${docente.apellidos}`,
+        correo: docente.correo,
+        horario
+      }
+    };
+
+  } catch (err) {
+    logger.error({ err }, 'Error consultando horario del docente');
+    return {
+      exito: false,
+      mensaje: `Ocurrió un error al consultar el horario del docente: ${err.message}`
+    };
+  }
+}

@@ -57,13 +57,13 @@
             </div>
           </div>
 
-
           <div class="upload-field">
             <label class="field-label">Tipo de importación</label>
             <select v-model="tipoCarga" class="field-input">
               <option value="">Cargar Documentos</option>
               <option value="estudiantes">Estudiantes</option>
               <option value="docentes">Docentes</option>
+              <option value="horarios">Horarios</option>
             </select>
           </div>
 

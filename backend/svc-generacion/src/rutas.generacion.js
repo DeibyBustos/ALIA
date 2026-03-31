@@ -42,7 +42,8 @@ import {
   consultarAcudiente,
   consultarInfoEstudiante,
   consultarEstudiantesGrado,
-  consultarHorarioEstudiante
+  consultarHorarioEstudiante,
+  consultarHorarioDocente
 } from "./operaciones/consultas.ops.js";
 
 // Importar recomendaciones
@@ -225,6 +226,36 @@ async function postChatHandler(req, res) {
             if (h.docente) msg += ` — Docente: ${h.docente}`;
             msg += '\n';
           }
+          respuesta.mensaje = msg.trim();
+        }
+        break;
+
+      case 'consultar_horario_docente':
+        if (!parametros.docente_nombre) {
+          respuesta = {
+            exito: false,
+            mensaje: "Necesito el nombre del docente para consultar su horario."
+          };
+          break;
+        }
+
+        respuesta = await consultarHorarioDocente(parametros);
+
+        if (respuesta.exito && respuesta.datos?.horario?.length) {
+          const dias = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+          const { docente, horario } = respuesta.datos;
+
+          let msg = `Horario de ${docente}:\n\n`;
+
+          for (const h of horario) {
+            const dia = dias[h.dia_semana] || `Día ${h.dia_semana}`;
+            msg += `${dia} de ${h.hora_inicio} a ${h.hora_fin}: ${h.asignatura}`;
+            if (h.curso) msg += ` — Curso: ${h.curso}`;
+            if (h.aula_codigo) msg += ` — Aula: ${h.aula_codigo}`;
+            else if (h.aula_nombre) msg += ` — Aula: ${h.aula_nombre}`;
+            msg += '\n';
+          }
+
           respuesta.mensaje = msg.trim();
         }
         break;
