@@ -110,17 +110,17 @@ async function obtenerEtiquetasDoc(idDoc) {
   const etiq = filas[0].etiquetas;
   
   if (typeof etiq === 'object' && etiq !== null) {
-    logger.info({ etiquetas: etiq }, "✅ Etiquetas ya son objeto");
+    logger.info({ etiquetas: etiq }, "Etiquetas ya son objeto");
     return etiq;
   }
   
   if (typeof etiq === 'string') {
     try {
       const parsed = JSON.parse(etiq);
-      logger.info({ parsed }, "✅ Etiquetas parseadas desde string");
+      logger.info({ parsed }, "Etiquetas parseadas desde string");
       return parsed;
     } catch (e) {
-      logger.warn({ etiq, error: e.message }, "⚠️ Error parseando etiquetas");
+      logger.warn({ etiq, error: e.message }, "Error parseando etiquetas");
       return null;
     }
   }
@@ -132,7 +132,7 @@ async function obtenerEtiquetasDoc(idDoc) {
  * Se usa tanto para documentos normales como para archivos de importación
  */
 async function generarFragmentosRAG(rutaFS, idDocumento, nombreArchivo) {
-  logger.info({ idDocumento, archivo: nombreArchivo }, "📚 Generando fragmentos RAG");
+  logger.info({ idDocumento, archivo: nombreArchivo }, "Generando fragmentos RAG");
   
   try {
     // Extraer texto del archivo
@@ -218,14 +218,14 @@ async function procesarTarea(t) {
     logger.info({ tarea: t.id, documento: t.id_documento, archivo: t.nombre_original }, "🟦 Iniciando procesamiento");
 
     const rutaFS = resolverRutaFisica(t.ruta_almacenamiento, t.nombre_original, t.tipo_mime);
-    logger.info({ rutaFS, existe: fs.existsSync(rutaFS) }, "📁 Ruta física resuelta");
+    logger.info({ rutaFS, existe: fs.existsSync(rutaFS) }, "Ruta física resuelta");
     
     if (!fs.existsSync(rutaFS)) {
       throw new Error(`Archivo no encontrado: ${rutaFS}`);
     }
 
     const etiquetas = await obtenerEtiquetasDoc(t.id_documento);
-    logger.info({ etiquetas: JSON.stringify(etiquetas) }, "🏷️ Etiquetas del documento");
+    logger.info({ etiquetas: JSON.stringify(etiquetas) }, "Etiquetas del documento");
 
     const purpose = (etiquetas?.proposito || etiquetas?.purpose || "").toLowerCase();
     const imp = (etiquetas?.import || etiquetas?.tipo || "").toLowerCase();
@@ -254,10 +254,10 @@ async function procesarTarea(t) {
         });
         
         const [countResult] = await consultar(`SELECT COUNT(*) as total FROM estudiantes`);
-        logger.info({ tarea: t.id, totalEstudiantes: countResult.total }, "✅ Importación estructurada de estudiantes completada");
+        logger.info({ tarea: t.id, totalEstudiantes: countResult.total }, "Importación estructurada de estudiantes completada");
 
         // 2. Ahora generar fragmentos RAG para que sea buscable
-        logger.info({ tarea: t.id, doc: t.id_documento }, "📚 Generando fragmentos RAG del archivo de estudiantes");
+        logger.info({ tarea: t.id, doc: t.id_documento }, "Generando fragmentos RAG del archivo de estudiantes");
         
         const { procesados, fallidos } = await generarFragmentosRAG(rutaFS, t.id_documento, t.nombre_original);
         
@@ -265,14 +265,14 @@ async function procesarTarea(t) {
           tarea: t.id, 
           fragmentosGenerados: procesados, 
           fragmentosFallidos: fallidos 
-        }, "✅ Fragmentos RAG generados para archivo de estudiantes");
+        }, "Fragmentos RAG generados para archivo de estudiantes");
         
         await ejecutar(`UPDATE tareas_ingesta SET estado='TERMINADA', mensaje_error=NULL WHERE id=?`, [t.id]);
-        logger.info({ tarea: t.id }, "✅✅ Importación de estudiantes COMPLETADA (datos + fragmentos)");
+        logger.info({ tarea: t.id }, "Importación de estudiantes COMPLETADA (datos + fragmentos)");
         return;
         
       } catch (importError) {
-        logger.error({ error: importError.message, stack: importError.stack, tarea: t.id }, "❌ ERROR EN IMPORTADOR DE ESTUDIANTES");
+        logger.error({ error: importError.message, stack: importError.stack, tarea: t.id }, "ERROR EN IMPORTADOR DE ESTUDIANTES");
         throw importError;
       }
     }
@@ -281,7 +281,7 @@ async function procesarTarea(t) {
     // IMPORTAR DOCENTES
     // ==========================================
     if (esExcel && (purpose === "importar_docentes" || imp === "docentes")) {
-      logger.info({ tarea: t.id, doc: t.id_documento }, "👨‍🏫 ➡️ EJECUTANDO IMPORTADOR DE DOCENTES");
+      logger.info({ tarea: t.id, doc: t.id_documento }, "EJECUTANDO IMPORTADOR DE DOCENTES");
       
       try {
         // 1. Primero ejecutar la importación estructurada a la BD
@@ -293,10 +293,10 @@ async function procesarTarea(t) {
         });
         
         const [countResult] = await consultar(`SELECT COUNT(*) as total FROM docentes`);
-        logger.info({ tarea: t.id, totalDocentes: countResult.total }, "✅ Importación estructurada de docentes completada");
+        logger.info({ tarea: t.id, totalDocentes: countResult.total }, "Importación estructurada de docentes completada");
 
         // 2. Ahora generar fragmentos RAG para que sea buscable
-        logger.info({ tarea: t.id, doc: t.id_documento }, "📚 Generando fragmentos RAG del archivo de docentes");
+        logger.info({ tarea: t.id, doc: t.id_documento }, "Generando fragmentos RAG del archivo de docentes");
         
         const { procesados, fallidos } = await generarFragmentosRAG(rutaFS, t.id_documento, t.nombre_original);
         
@@ -304,14 +304,14 @@ async function procesarTarea(t) {
           tarea: t.id, 
           fragmentosGenerados: procesados, 
           fragmentosFallidos: fallidos 
-        }, "✅ Fragmentos RAG generados para archivo de docentes");
+        }, "Fragmentos RAG generados para archivo de docentes");
         
         await ejecutar(`UPDATE tareas_ingesta SET estado='TERMINADA', mensaje_error=NULL WHERE id=?`, [t.id]);
-        logger.info({ tarea: t.id }, "✅✅ Importación de docentes COMPLETADA (datos + fragmentos)");
+        logger.info({ tarea: t.id }, "Importación de docentes COMPLETADA (datos + fragmentos)");
         return;
         
       } catch (importError) {
-        logger.error({ error: importError.message, stack: importError.stack, tarea: t.id }, "❌ ERROR EN IMPORTADOR DE DOCENTES");
+        logger.error({ error: importError.message, stack: importError.stack, tarea: t.id }, "ERROR EN IMPORTADOR DE DOCENTES");
         throw importError;
       }
     }
@@ -319,7 +319,7 @@ async function procesarTarea(t) {
     // ==========================================
     // FLUJO RAG (documentos normales)
     // ==========================================
-    logger.info({ tarea: t.id }, "📚 No es importación, continuando con flujo RAG estándar");
+    logger.info({ tarea: t.id }, "No es importación, continuando con flujo RAG estándar");
 
     const yaExiste = await documentoTieneFragmentosValidos(t.id_documento);
     if (yaExiste) {
@@ -375,12 +375,12 @@ async function procesarTarea(t) {
     }
 
     await ejecutar(`UPDATE tareas_ingesta SET estado='TERMINADA', mensaje_error=NULL WHERE id=?`, [t.id]);
-    logger.info({ tarea: t.id, procesados, fallidos: fallidosEmbedding }, "✅ Ingesta RAG terminada");
+    logger.info({ tarea: t.id, procesados, fallidos: fallidosEmbedding }, "Ingesta RAG terminada");
 
   } catch (err) {
     const mensajeError = String(err?.message || err).slice(0, 500);
     await ejecutar(`UPDATE tareas_ingesta SET estado='FALLIDA', mensaje_error=? WHERE id=?`, [mensajeError, t.id]);
-    logger.error({ tarea: t.id, err: err.message }, "❌ Ingesta fallida");
+    logger.error({ tarea: t.id, err: err.message }, "Ingesta fallida");
   }
 }
 
@@ -393,7 +393,7 @@ async function ciclo() {
     );
 
     if (tareas.length > 0) {
-      logger.info({ cantidad: tareas.length }, "🔄 Procesando lote");
+      logger.info({ cantidad: tareas.length }, "Procesando lote");
       for (const t of tareas) {
         await procesarTarea(t).catch(err => logger.error({ err: err.message, tarea: t.id }, "Error en tarea"));
       }
@@ -408,5 +408,5 @@ async function ciclo() {
 process.on("SIGTERM", () => { logger.info("SIGTERM, cerrando..."); process.exit(0); });
 process.on("SIGINT", () => { logger.info("SIGINT, cerrando..."); process.exit(0); });
 
-logger.info({ TAM, OVER, BATCH, POLL_MS }, "🚀 Worker de ingesta iniciado");
+logger.info({ TAM, OVER, BATCH, POLL_MS }, "Worker de ingesta iniciado");
 ciclo();

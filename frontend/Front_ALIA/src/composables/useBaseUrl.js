@@ -1,5 +1,5 @@
 import { ref } from "vue";
-import { STORAGE_KEY_BASE_URL } from "@/app/storageKeys";
+import { STORAGE_KEY_BASE_URL } from "@/App/storageKeys";
 
 export function useBaseUrl() {
   const envDefault = import.meta.env.VITE_API_BASE || "http://localhost:8080";

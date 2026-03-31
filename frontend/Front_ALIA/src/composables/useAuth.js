@@ -1,5 +1,5 @@
 import { ref, computed, onMounted } from "vue";
-import { TOKEN_KEY, USER_KEY } from "@/app/storageKeys";
+import { TOKEN_KEY, USER_KEY } from "@/App/storageKeys";
 
 export function useAuth(baseUrlRef) {
   const user = ref(null);

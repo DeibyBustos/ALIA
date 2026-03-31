@@ -1,6 +1,8 @@
 services:
 
-
+  # ─────────────────────────────────────────
+  # BASE DE DATOS
+  # ─────────────────────────────────────────
   mysql:
     image: mysql:8.0
     container_name: alia-mysql
@@ -12,22 +14,41 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # ─────────────────────────────────────────
+  # FRONTEND
+  # ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend/Front_ALIA
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    container_name: alia-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - api-gateway
 
+  # ─────────────────────────────────────────
+  # API GATEWAY
+  # ─────────────────────────────────────────
   api-gateway:
     build:
-      context: .
+      context: ./backend
       dockerfile: api-gateway/Dockerfile
     container_name: alia-api-gateway
     restart: unless-stopped
     ports:
       - "${PORT_API_GATEWAY}:${PORT_API_GATEWAY}"
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DB_HOST: mysql
     depends_on:
@@ -46,14 +67,16 @@ services:
       svc-generacion:
         condition: service_started
 
-
+  # ─────────────────────────────────────────
+  # SERVICIOS BACKEND
+  # ─────────────────────────────────────────
   svc-auth:
     build:
-      context: .
+      context: ./backend
       dockerfile: svc-auth/Dockerfile
     container_name: alia-svc-auth
     restart: unless-stopped
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DB_HOST: mysql
     depends_on:
@@ -62,11 +85,11 @@ services:
 
   svc-usuarios:
     build:
-      context: .
+      context: ./backend
       dockerfile: svc-usuarios/Dockerfile
     container_name: alia-svc-usuarios
     restart: unless-stopped
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DB_HOST: mysql
     depends_on:
@@ -75,11 +98,11 @@ services:
 
   svc-documentos:
     build:
-      context: .
+      context: ./backend
       dockerfile: svc-documentos/Dockerfile
     container_name: alia-svc-documentos
     restart: unless-stopped
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DB_HOST: mysql
       STORAGE_DIR: /app/storage
@@ -92,11 +115,11 @@ services:
 
   svc-ingesta:
     build:
-      context: .
+      context: ./backend
       dockerfile: svc-ingesta/Dockerfile
     container_name: alia-svc-ingesta
     restart: unless-stopped
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DB_HOST: mysql
       STORAGE_DIR: /app/storage
@@ -108,11 +131,11 @@ services:
 
   svc-busqueda:
     build:
-      context: .
+      context: ./backend
       dockerfile: svc-busqueda/Dockerfile
     container_name: alia-svc-busqueda
     restart: unless-stopped
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DB_HOST: mysql
     depends_on:
@@ -121,11 +144,11 @@ services:
 
   svc-generacion:
     build:
-      context: .
+      context: ./backend
       dockerfile: svc-generacion/Dockerfile
     container_name: alia-svc-generacion
     restart: unless-stopped
-    env_file: .env
+    env_file: ./backend/.env
     environment:
       DB_HOST: mysql
       STORAGE_DIR: /app/storage
@@ -135,7 +158,9 @@ services:
       mysql:
         condition: service_healthy
 
-
+# ─────────────────────────────────────────
+# VOLÚMENES
+# ─────────────────────────────────────────
 volumes:
   mysql_data:
   storage_data:
