@@ -4,6 +4,7 @@ import path from "node:path";
 import { consultar, ejecutar } from "../../libreria-compartida/src/db.js";
 import { logger } from "../../libreria-compartida/src/logger.js";
 import { openai } from "../../libreria-compartida/src/openai.js";
+import { RESPUESTA_FUERA_ALCANCE } from "../../libreria-compartida/src/topicFilter.js";
 
 // Importar generadores
 import {
@@ -41,7 +42,8 @@ import {
   consultarAcudiente,
   consultarInfoEstudiante,
   consultarEstudiantesGrado,
-  consultarHorarioEstudiante
+  consultarHorarioEstudiante,
+  consultarHorarioDocente
 } from "./operaciones/consultas.ops.js";
 
 // Importar recomendaciones
@@ -228,6 +230,36 @@ async function postChatHandler(req, res) {
         }
         break;
 
+      case 'consultar_horario_docente':
+        if (!parametros.docente_nombre) {
+          respuesta = {
+            exito: false,
+            mensaje: "Necesito el nombre del docente para consultar su horario."
+          };
+          break;
+        }
+
+        respuesta = await consultarHorarioDocente(parametros);
+
+        if (respuesta.exito && respuesta.datos?.horario?.length) {
+          const dias = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+          const { docente, horario } = respuesta.datos;
+
+          let msg = `Horario de ${docente}:\n\n`;
+
+          for (const h of horario) {
+            const dia = dias[h.dia_semana] || `Día ${h.dia_semana}`;
+            msg += `${dia} de ${h.hora_inicio} a ${h.hora_fin}: ${h.asignatura}`;
+            if (h.curso) msg += ` — Curso: ${h.curso}`;
+            if (h.aula_codigo) msg += ` — Aula: ${h.aula_codigo}`;
+            else if (h.aula_nombre) msg += ` — Aula: ${h.aula_nombre}`;
+            msg += '\n';
+          }
+
+          respuesta.mensaje = msg.trim();
+        }
+        break;
+
       // ── GENERACIÓN DE ARCHIVOS ────────────────────────────────────────────
 
       case 'generar_excel_estudiantes':
@@ -279,8 +311,11 @@ async function postChatHandler(req, res) {
         }
         break;
 
-      // ── FALLBACK ──────────────────────────────────────────────────────────
+      // ── FALLBACK ────────────────────────────────────────────────────────── 
 
+      case 'fuera_de_alcance':
+        respuesta = { exito: false, mensaje: RESPUESTA_FUERA_ALCANCE };
+        break;
       case 'consulta_general':
       default:
         respuesta = await procesarConsultaGeneral(mensaje, contextoMgr);
@@ -338,10 +373,11 @@ async function procesarConsultaGeneral(pregunta, contextoMgr) {
     const mensajes = [
       {
         role: 'system',
-        content: `Eres un asistente académico del sistema ALIA. Tienes acceso a información académica de estudiantes, docentes, calificaciones y asistencias.
+        content: `Eres un asistente académico del sistema ALIA, diseñado exclusivamente para apoyar a docentes, coordinadores y personal administrativo de instituciones de educación básica y secundaria.
 ${resumenContexto}
+REGLA ESTRICTA: Solo puedes responder preguntas relacionadas con el trabajo escolar: estudiantes, calificaciones, asistencias, horarios, planeaciones, documentos institucionales y gestión académica. Si el usuario pregunta algo fuera de ese contexto (recetas, entretenimiento, deportes, noticias, vida personal, etc.), responde ÚNICAMENTE: "Disculpa, no puedo ayudarte con eso. Estoy diseñado para apoyarte en tareas del entorno escolar: estudiantes, calificaciones, horarios, asistencias y documentos institucionales. ¿En qué puedo ayudarte en ese ámbito?"
 Responde de forma clara, directa y en español. No uses emojis. Si el usuario pregunta sobre datos específicos de un estudiante, indícale que puedes consultar esa información si te proporciona el nombre del estudiante.`
-      },
+},
       ...historial.map(h => ({
         role: h.rol === 'user' ? 'user' : 'assistant',
         content: typeof h.contenido === 'string' ? h.contenido : JSON.stringify(h.contenido)

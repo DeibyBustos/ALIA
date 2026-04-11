@@ -1,11 +1,23 @@
 import { openai } from '../../../libreria-compartida/src/openai.js';
 import { logger } from '../../../libreria-compartida/src/logger.js';
+// ── NUEVO: importar el filtro de contexto educativo ───────────────────────────
+import { validarPregunta, RESPUESTA_FUERA_ALCANCE } from '../../../libreria-compartida/src/topicFilter.js';
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Detecta la intención del usuario usando IA
  */
 export async function analizarIntencion(mensaje) {
-  const prompt = `Eres un asistente académico. Analiza el siguiente mensaje y determina la intención del usuario.
+
+  // ── NUEVO: bloquear mensajes fuera del contexto educativo ─────────────────
+  const { bloqueada, motivo } = validarPregunta(mensaje);
+  if (bloqueada) {
+    logger.warn({ mensaje, motivo }, '🚫 Mensaje bloqueado por topicFilter');
+    return 'fuera_de_alcance';
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+ const prompt = `Eres un asistente académico. Analiza el siguiente mensaje y determina la intención del usuario.
 
 Intenciones posibles:
 - "generar_excel_estudiantes": Usuario quiere GENERAR un Excel con lista de estudiantes
@@ -26,15 +38,18 @@ Intenciones posibles:
 - "consultar_acudiente": Usuario pregunta por el acudiente, padre, madre o tutor de un estudiante
 - "consultar_info_estudiante": Usuario pregunta información general o datos de un estudiante específico
 - "consultar_horario_estudiante": Usuario pregunta el horario de clases de un estudiante
+- "consultar_horario_docente": Usuario pregunta por horario, aula, curso, día o asignatura de un docente
 - "recomendar": Usuario solicita recomendaciones académicas
-- "consulta_general": Pregunta general sobre el sistema académico que NO involucra datos de un estudiante específico (usa esta SOLO si no encaja en ninguna otra)
+- "consulta_general": Pregunta general sobre el sistema académico que NO encaja en ninguna otra
 
 REGLAS IMPORTANTES — aplica la primera que coincida:
 - Si pregunta "qué materias tiene X", "qué asignaturas ve X", "en qué materias está X" → "consultar_materias_estudiante"
 - Si pregunta "quién es el acudiente de X", "quién es el padre/madre/tutor de X", "cómo se llama el acudiente de X" → "consultar_acudiente"
 - Si pregunta "cuántos estudiantes hay en X" o "qué estudiantes hay en X" → "consultar_estudiantes_grado"
 - Si pregunta "información de X", "datos de X", "quién es X" (siendo X un estudiante) → "consultar_info_estudiante"
-- Si pregunta "horario de X" o "a qué horas tiene clases X" → "consultar_horario_estudiante"
+- Si pregunta por el horario, aula, curso o asignatura de un DOCENTE → "consultar_horario_docente"
+- Si pregunta "en qué aula tiene clase Ana Torres", "dónde dicta clase Ana Torres", "qué aula le corresponde a Ana Torres", "en qué aula tengo clase con 7A como docente Ana Torres" → "consultar_horario_docente"
+- Si pregunta "horario de X" o "a qué horas tiene clases X" y X es un estudiante → "consultar_horario_estudiante"
 - Si pregunta "notas de X", "calificaciones de X" → "consultar_notas"
 - Si pregunta "asistencias de X", "faltas de X" → "consultar_asistencias"
 - Si pide "genera/genérame/crea un Excel/PDF" → usa la intención de generación correspondiente
