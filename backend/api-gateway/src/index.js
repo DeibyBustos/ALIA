@@ -39,7 +39,6 @@ const corsOptions = {
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 app.use(cors(corsOptions));
-
 app.use(pinoHttp({ logger }));
 
 /** ===== Proxy factory ===== */
@@ -58,27 +57,35 @@ function buildProxy(target) {
   });
 }
 
+/** ===== Hosts de servicios ===== */
+const SVC_AUTH_HOST       = process.env.SVC_AUTH_HOST       || "localhost";
+const SVC_USUARIOS_HOST   = process.env.SVC_USUARIOS_HOST   || "localhost";
+const SVC_DOCUMENTOS_HOST = process.env.SVC_DOCUMENTOS_HOST || "localhost";
+const SVC_BUSQUEDA_HOST   = process.env.SVC_BUSQUEDA_HOST   || "localhost";
+const SVC_GENERACION_HOST = process.env.SVC_GENERACION_HOST || "localhost";
+const SVC_INGESTA_HOST    = process.env.SVC_INGESTA_HOST    || "localhost";
+
 /** ===== Health ===== */
 app.get("/estado", (_req, res) => {
   res.json({
     ok: true,
     servicio: "api-gateway",
     servicios: {
-      auth:       `http://localhost:${process.env.PORT_SVC_AUTH       || 8085}`,
-      documentos: `http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`,
-      busqueda:   `http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`,
-      ingesta:    `http://localhost:${process.env.PORT_SVC_INGESTA   || 8082}`,
-      generacion: `http://localhost:${process.env.PORT_SVC_GENERACION || 8084}`,
-      usuarios: `http://localhost:${process.env.PORT_SVC_USUARIOS || 8086}`
+      auth:       `http://${SVC_AUTH_HOST}:${process.env.PORT_SVC_AUTH       || 8085}`,
+      documentos: `http://${SVC_DOCUMENTOS_HOST}:${process.env.PORT_SVC_DOCUMENTOS || 8081}`,
+      busqueda:   `http://${SVC_BUSQUEDA_HOST}:${process.env.PORT_SVC_BUSQUEDA   || 8083}`,
+      ingesta:    `http://${SVC_INGESTA_HOST}:${process.env.PORT_SVC_INGESTA    || 8082}`,
+      generacion: `http://${SVC_GENERACION_HOST}:${process.env.PORT_SVC_GENERACION || 8084}`,
+      usuarios:   `http://${SVC_USUARIOS_HOST}:${process.env.PORT_SVC_USUARIOS   || 8086}`
     }
   });
 });
 
 /** ===== Rutas proxied ===== */
-app.use("/auth", buildProxy(`http://localhost:${process.env.PORT_SVC_AUTH || 8085}`));
-app.use("/usuarios", buildProxy(`http://localhost:${process.env.PORT_SVC_USUARIOS || 8086}`));
+app.use("/auth", buildProxy(`http://${SVC_AUTH_HOST}:${process.env.PORT_SVC_AUTH || 8085}`));
+app.use("/usuarios", buildProxy(`http://${SVC_USUARIOS_HOST}:${process.env.PORT_SVC_USUARIOS || 8086}`));
 app.use("/documentos", createProxyMiddleware({
-  target: `http://localhost:${process.env.PORT_SVC_DOCUMENTOS || 8081}`,
+  target: `http://${SVC_DOCUMENTOS_HOST}:${process.env.PORT_SVC_DOCUMENTOS || 8081}`,
   changeOrigin: true,
   pathRewrite: { "^/": "/documentos/" },
   proxyTimeout: 30_000,
@@ -93,8 +100,8 @@ app.use("/documentos", createProxyMiddleware({
     if (!res.headersSent) res.status(502).json({ error: "Error en proxy del gateway" });
   }
 }));
-app.use("/busqueda",  buildProxy(`http://localhost:${process.env.PORT_SVC_BUSQUEDA  || 8083}`));
-app.use("/generacion", buildProxy(`http://localhost:${process.env.PORT_SVC_GENERACION || 8084}`));
+app.use("/busqueda",   buildProxy(`http://${SVC_BUSQUEDA_HOST}:${process.env.PORT_SVC_BUSQUEDA   || 8083}`));
+app.use("/generacion", buildProxy(`http://${SVC_GENERACION_HOST}:${process.env.PORT_SVC_GENERACION || 8084}`));
 
 /** ===== 404 ===== */
 app.use((req, res) => {

@@ -14,6 +14,7 @@ import { extraerExcelComoTexto } from "./extractores/excel.js";
 import { importarEstudiantesDesdeExcel } from "./importadores/estudiantes.js";
 import { importarDocentesDesdeExcel } from "./importadores/docentes.js";
 
+
 const TAM = +process.env.TAMANO_CHUNK || 800;
 const OVER = +process.env.SOBRELAPAMIENTO_CHUNK || 120;
 const BATCH = +process.env.INGESTA_BATCH || 5;
@@ -242,7 +243,7 @@ async function procesarTarea(t) {
     // IMPORTAR ESTUDIANTES
     // ==========================================
     if (esExcel && (purpose === "importar_estudiantes" || imp === "estudiantes")) {
-      logger.info({ tarea: t.id, doc: t.id_documento }, "🎓 ➡️ EJECUTANDO IMPORTADOR DE ESTUDIANTES");
+      logger.info({ tarea: t.id, doc: t.id_documento }, "EJECUTANDO IMPORTADOR DE ESTUDIANTES");
       
       try {
         // 1. Primero ejecutar la importación estructurada a la BD
@@ -312,6 +313,57 @@ async function procesarTarea(t) {
         
       } catch (importError) {
         logger.error({ error: importError.message, stack: importError.stack, tarea: t.id }, "ERROR EN IMPORTADOR DE DOCENTES");
+        throw importError;
+      }
+    }
+
+
+     // ==========================================
+    // IMPORTAR NOTAS
+    // ==========================================
+
+      if (esExcel && (purpose === "importar_notas" || imp === "notas" || imp === "calificaciones")) {
+      logger.info({ tarea: t.id, doc: t.id_documento }, "EJECUTANDO IMPORTADOR DE NOTAS");
+ 
+      try {
+        // curso_id y periodo_id vienen en las etiquetas del documento
+        const cursoId   = etiquetas?.curso_id   ? Number(etiquetas.curso_id)   : null;
+        const periodoId = etiquetas?.periodo_id  ? Number(etiquetas.periodo_id) : null;
+ 
+        // 1. Importación estructurada a la BD
+        const resultado = await importarNotasDesdeExcel({
+          rutaFS,
+          idDocumento: t.id_documento,
+          nombre:      t.nombre_original,
+          cursoId,
+          periodoId,
+        });
+ 
+        logger.info({
+          tarea:      t.id,
+          loteId:     resultado.loteId,
+          filasOk:    resultado.filasOk,
+          filasError: resultado.filasError,
+        }, "Importación estructurada de notas completada");
+ 
+        // 2. Fragmentos RAG para que el archivo quede buscable
+        logger.info({ tarea: t.id, doc: t.id_documento }, "Generando fragmentos RAG del archivo de notas");
+ 
+        const { procesados, fallidos } = await generarFragmentosRAG(rutaFS, t.id_documento, t.nombre_original);
+ 
+        logger.info({
+          tarea:               t.id,
+          fragmentosGenerados: procesados,
+          fragmentosFallidos:  fallidos,
+        }, "Fragmentos RAG generados para archivo de notas");
+ 
+        await ejecutar(`UPDATE tareas_ingesta SET estado='TERMINADA', mensaje_error=NULL WHERE id=?`, [t.id]);
+        logger.info({ tarea: t.id }, "Importación de notas COMPLETADA (datos + fragmentos)");
+        return;
+ 
+      } catch (importError) {
+        logger.error({ error: importError.message, stack: importError.stack, tarea: t.id },
+          "ERROR EN IMPORTADOR DE NOTAS");
         throw importError;
       }
     }
