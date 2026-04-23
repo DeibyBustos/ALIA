@@ -67,7 +67,16 @@ async function postDocumentoHandler(req, res) {
 
     // mover tmp -> storage
     fs.mkdirSync(path.dirname(rutaFS), { recursive: true });
-    fs.renameSync(tmpPath, rutaFS);
+    try {
+      fs.renameSync(tmpPath, rutaFS);
+    } catch (err) {
+      if (err.code === 'EXDEV') {
+        fs.copyFileSync(tmpPath, rutaFS);
+        fs.unlinkSync(tmpPath);
+      } else {
+        throw err;
+      }
+    }
 
     // checksum sha256
     const checksum = await checksumArchivo(rutaFS);

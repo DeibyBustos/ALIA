@@ -29,7 +29,15 @@ async function detectarTipoConsulta(pregunta) {
     'asistencia', 'asistencias', 'falta', 'faltas',
     'grado', 'curso', 'docente', 'profesor', 'materia',
     'cuantos', 'cuantas', 'listar', 'lista', 'dame',
-    'agregar', 'eliminar', 'modificar', 'actualizar'
+    'agregar', 'eliminar', 'modificar', 'actualizar',
+    // ── NUEVO: términos de planeación ──────────────────────────────────────
+    'planeacion', 'planeación', 'planeaciones',
+    'plan', 'planilla', 'planning',
+    'cronograma', 'contenido', 'contenidos',
+    'logro', 'logros', 'indicador', 'indicadores',
+    'semana', 'semanas', 'periodo', 'periodos',
+    'tema', 'temas', 'actividad', 'actividades'
+    // ───────────────────────────────────────────────────────────────────────
   ];
 
   // Palabras clave que indican búsqueda en documentos
@@ -117,7 +125,6 @@ function scorePorPalabras(texto, consulta) {
 }
 
 function extraerTerminosDocumento(pregunta) {
-  // Palabras comunes a ignorar (stop words)
   const stopWords = new Set([
     'que', 'cual', 'como', 'donde', 'cuando', 'quien', 'porque', 'para',
     'este', 'esta', 'estos', 'estas', 'ese', 'esa', 'esos', 'esas',
@@ -127,33 +134,27 @@ function extraerTerminosDocumento(pregunta) {
     'puede', 'debe', 'tiene', 'hacer', 'contiene', 'muestra', 'dice',
     'archivo', 'documento', 'carpeta', 'folder', 'file'
   ]);
-  
+
   const palabras = pregunta
     .toLowerCase()
-    .replace(/[^\wáéíóúñü\s-]/g, ' ') 
+    .replace(/[^\wáéíóúñü\s-]/g, ' ')
     .split(/\s+/)
-    .filter(p => p.length > 2); 
-  
-  // Filtrar stop words pero mantener palabras importantes
-  const palabrasClave = palabras.filter(p => 
-    !stopWords.has(p) || p.length > 6 
+    .filter(p => p.length > 2);
+
+  const palabrasClave = palabras.filter(p =>
+    !stopWords.has(p) || p.length > 6
   );
-  
-  return [...new Set(palabrasClave)]; 
+
+  return [...new Set(palabrasClave)];
 }
 
 // ETAPA 1: FILTRAR DOCUMENTOS RELEVANTES
 
-/**
- * Busca documentos que coincidan con términos de la pregunta
- * Retorna IDs de documentos ordenados por relevancia
- */
 async function buscarDocumentosRelevantes({ pregunta, filtro, maxDocs = 50 }) {
   const terminos = extraerTerminosDocumento(pregunta);
   const where = [];
   const params = [];
-  
-  // Filtros base de usuario
+
   if (filtro?.original_name) {
     where.push("nombre_original LIKE ? ESCAPE '\\\\'");
     params.push(`%${escapeLike(filtro.original_name)}%`);
@@ -166,83 +167,56 @@ async function buscarDocumentosRelevantes({ pregunta, filtro, maxDocs = 50 }) {
     where.push("creado_en <= ?");
     params.push(filtro.hasta);
   }
-  
-  // Si no hay términos, hacer búsqueda simple sin scoring
+
   if (terminos.length === 0) {
     const W = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const sql = `
-      SELECT 
-        id,
-        nombre_original,
-        creado_en,
-        0 as score_nombre
-      FROM documentos
-      ${W}
+      SELECT id, nombre_original, creado_en, 0 as score_nombre
+      FROM documentos ${W}
       ORDER BY creado_en DESC
       LIMIT ?
     `;
     params.push(maxDocs);
-    
     const docs = await consultar(sql, params);
-    logger.info({
-      terminos_extraidos: 0,
-      documentos_encontrados: docs.length,
-      modo: "sin_filtro_terminos"
-    }, "Etapa 1: Documentos relevantes");
-    
+    logger.info({ terminos_extraidos: 0, documentos_encontrados: docs.length, modo: "sin_filtro_terminos" }, "Etapa 1: Documentos relevantes");
     return docs.map(d => d.id);
   }
-  
-  // Construir CASE statements para scoring (compatible con MySQL)
-  const scoreConditions = terminos.map(() => 
+
+  const scoreConditions = terminos.map(() =>
     "(CASE WHEN nombre_original LIKE ? THEN 1 ELSE 0 END)"
   ).join(" + ");
-  
+
   const W = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  
+
   const sql = `
-    SELECT 
-      id,
-      nombre_original,
-      creado_en,
+    SELECT id, nombre_original, creado_en,
       (${scoreConditions}) as score_nombre
-    FROM documentos
-    ${W}
+    FROM documentos ${W}
     HAVING score_nombre > 0
     ORDER BY score_nombre DESC, creado_en DESC
     LIMIT ?
   `;
-  
-  // Agregar términos como parámetros %término%
+
   const terminosParams = terminos.map(t => `%${t}%`);
   const allParams = [...params, ...terminosParams, maxDocs];
-  
   const docs = await consultar(sql, allParams);
-  
+
   logger.info({
     terminos_extraidos: terminos.length,
     documentos_encontrados: docs.length,
-    top3: docs.slice(0, 3).map(d => ({ 
-      nombre: d.nombre_original, 
-      score: d.score_nombre 
-    }))
+    top3: docs.slice(0, 3).map(d => ({ nombre: d.nombre_original, score: d.score_nombre }))
   }, "Etapa 1: Documentos relevantes");
-  
+
   return docs.map(d => d.id);
 }
 
-
 // ETAPA 2: BUSCAR FRAGMENTOS EN DOCUMENTOS
 
-
-/**
- * Trae fragmentos SOLO de documentos pre-filtrados
- */
 async function traerFragmentosDeDocumentos(idsDocumentos, limite = 1000) {
   if (!idsDocumentos.length) return [];
-  
+
   const placeholders = idsDocumentos.map(() => '?').join(',');
-  
+
   const sql = `
     SELECT
       f.id                       AS id_fragmento,
@@ -254,25 +228,21 @@ async function traerFragmentosDeDocumentos(idsDocumentos, limite = 1000) {
       d.creado_en                AS created_at
     FROM fragmentos_documento f
     JOIN documentos d ON d.id = f.id_documento
-    WHERE 
-      d.id IN (${placeholders})
+    WHERE d.id IN (${placeholders})
       AND LENGTH(f.contenido) >= 50
     ORDER BY d.id, f.indice_fragmento
     LIMIT ?
   `;
-  
+
   return consultar(sql, [...idsDocumentos, limite]);
 }
 
-
 // SCORING DE FRAGMENTOS
-
 
 async function scorearFragmentos(candidatos, pregunta) {
   let embPregunta = null;
   let modoFallback = false;
-  
-  // Intentar obtener embedding de la pregunta
+
   try {
     embPregunta = await embeddingTexto(pregunta);
     logger.info(`Embedding de pregunta obtenido (dim: ${embPregunta?.length})`);
@@ -280,26 +250,22 @@ async function scorearFragmentos(candidatos, pregunta) {
     modoFallback = true;
     logger.warn({ err: String(err?.message) }, "Fallback a búsqueda por palabras");
   }
-  
+
   const scored = [];
-  let stats = {
-    con_embedding: 0,
-    sin_embedding: 0,
-    errores_parsing: 0
-  };
-  
+  let stats = { con_embedding: 0, sin_embedding: 0, errores_parsing: 0 };
+
   for (const c of candidatos) {
     let score = 0;
-    
+
     if (!modoFallback && embPregunta) {
       try {
         let embFrag = null;
-        
+
         if (c.embedding_json) {
-          embFrag = typeof c.embedding_json === 'string' 
-            ? JSON.parse(c.embedding_json) 
+          embFrag = typeof c.embedding_json === 'string'
+            ? JSON.parse(c.embedding_json)
             : c.embedding_json;
-          
+
           if (Array.isArray(embFrag) && embFrag.length === embPregunta.length) {
             score = similitudCoseno(embPregunta, embFrag);
             stats.con_embedding++;
@@ -313,16 +279,14 @@ async function scorearFragmentos(candidatos, pregunta) {
         stats.errores_parsing++;
         logger.debug({ err: parseErr.message, id: c.id_fragmento }, "Error parsing embedding");
       }
-      
-      // Fallback por palabras si no hay embedding
+
       if (score === 0 && c.texto) {
         score = scorePorPalabras(c.texto, pregunta) * 0.3;
       }
     } else {
-      // Modo fallback total
       score = scorePorPalabras(c.texto, pregunta);
     }
-    
+
     scored.push({
       id_fragmento: c.id_fragmento,
       id_documento: c.id_documento,
@@ -332,10 +296,9 @@ async function scorearFragmentos(candidatos, pregunta) {
       texto: c.texto
     });
   }
-  
-  logger.info({ ...stats, total: candidatos.length, modo: modoFallback ? 'palabras' : 'embeddings' }, 
-    "Stats scoring");
-  
+
+  logger.info({ ...stats, total: candidatos.length, modo: modoFallback ? 'palabras' : 'embeddings' }, "Stats scoring");
+
   return { scored, modoFallback, stats };
 }
 
@@ -355,9 +318,7 @@ router.post("/consulta", async (req, res) => {
     } = req.body || {};
 
     if (!pregunta || typeof pregunta !== "string" || pregunta.length < 3) {
-      return res.status(400).json({
-        error: "Campo 'pregunta' requerido (mínimo 3 caracteres)"
-      });
+      return res.status(400).json({ error: "Campo 'pregunta' requerido (mínimo 3 caracteres)" });
     }
 
     logger.info({ pregunta: pregunta.substring(0, 100) }, "Nueva consulta");
@@ -369,101 +330,75 @@ router.post("/consulta", async (req, res) => {
       logger.info("🔄 Redirigiendo a consulta de base de datos");
       try {
         const resultado = await consultarBaseDatos(pregunta);
-        return res.json({
-          ...resultado,
-          ms: Date.now() - t0,
-          tipo_busqueda: 'base_datos'
-        });
+        return res.json({ ...resultado, ms: Date.now() - t0, tipo_busqueda: 'base_datos' });
       } catch (error) {
         logger.warn({ error: error.message }, "Falló consulta BD, intentando búsqueda en documentos");
-        // Continuar con búsqueda de documentos como fallback
       }
     }
-    
 
     // ETAPA 1: Filtrar documentos relevantes
+    let idsDocumentos = await buscarDocumentosRelevantes({ pregunta, filtro, maxDocs });
 
-    let idsDocumentos = await buscarDocumentosRelevantes({ 
-      pregunta, 
-      filtro, 
-      maxDocs 
-    });
-    
-    // Fallback: Si no hay coincidencias por términos, traer documentos recientes
     if (!idsDocumentos.length) {
       logger.warn("No hay coincidencias por términos, usando documentos recientes");
-      
+
       const where = [];
       const params = [];
-      
+
       if (filtro?.original_name) {
         where.push("nombre_original LIKE ? ESCAPE '\\\\'");
         params.push(`%${escapeLike(filtro.original_name)}%`);
       }
-      if (filtro?.desde) {
-        where.push("creado_en >= ?");
-        params.push(filtro.desde);
-      }
-      if (filtro?.hasta) {
-        where.push("creado_en <= ?");
-        params.push(filtro.hasta);
-      }
-      
+      if (filtro?.desde) { where.push("creado_en >= ?"); params.push(filtro.desde); }
+      if (filtro?.hasta) { where.push("creado_en <= ?"); params.push(filtro.hasta); }
+
       const W = where.length ? `WHERE ${where.join(" AND ")}` : "";
-      
       const fallbackDocs = await consultar(
         `SELECT id FROM documentos ${W} ORDER BY creado_en DESC LIMIT ?`,
         [...params, maxDocs]
       );
-      
+
       idsDocumentos = fallbackDocs.map(d => d.id);
-      
+
       if (!idsDocumentos.length) {
         logger.warn("No se encontraron documentos ni con fallback");
         return res.json(
-          usarLLM 
+          usarLLM
             ? { respuesta: "No encontré documentos relacionados con tu pregunta.", citas: [] }
             : { resultados: [], mensaje: "No se encontraron documentos" }
         );
       }
     }
-    
 
-    // ETAPA 2: Traer fragmentos de esos documentos
-
+    // ETAPA 2: Traer fragmentos
     const candidatos = await traerFragmentosDeDocumentos(idsDocumentos);
-    
+
     if (!candidatos.length) {
       logger.warn("Documentos encontrados pero sin fragmentos válidos");
       return res.json(
-        usarLLM 
+        usarLLM
           ? { respuesta: "Encontré documentos pero no tienen contenido procesable.", citas: [] }
           : { resultados: [] }
       );
     }
-    
+
     logger.info(`Analizando ${candidatos.length} fragmentos de ${idsDocumentos.length} documentos`);
-    
- 
+
     // ETAPA 3: Scorear fragmentos
-  
     const { scored, modoFallback, stats } = await scorearFragmentos(candidatos, pregunta);
-    
-    // Ordenar y aplicar top-k
+
     scored.sort((a, b) => b.score - a.score);
     let topk = scored.slice(0, Number(k) || 6);
-    
-    // Aplicar umbral
+
     if (typeof umbral === "number") {
       topk = topk.filter(x => x.score >= umbral);
     }
-    
-    // Fallback si todos los scores son muy bajos
+
     if (topk.length === 0 || topk.every(x => x.score < 0.05)) {
       logger.warn("Scores muy bajos, ampliando búsqueda");
-      topk = scored.slice(0, Number(k) || 6); 
+      topk = scored.slice(0, Number(k) || 6);
     }
-    
+
     logger.debug({
       topk: topk.slice(0, 3).map(r => ({
         doc: r.original_name,
@@ -471,33 +406,25 @@ router.post("/consulta", async (req, res) => {
         preview: r.texto?.substring(0, 60)
       }))
     }, "Top resultados");
-    
 
     // Respuesta sin LLM
-
     if (!usarLLM) {
-      return res.json({ 
+      return res.json({
         resultados: topk.map(r => ({
           documento: r.original_name,
           score: r.score,
           fragmento: r.texto?.substring(0, 200) + '...'
         })),
         modo: modoFallback ? "palabras" : "embeddings",
-        stats: {
-          documentos_analizados: idsDocumentos.length,
-          fragmentos_totales: candidatos.length,
-          ...stats
-        }
+        stats: { documentos_analizados: idsDocumentos.length, fragmentos_totales: candidatos.length, ...stats }
       });
     }
+
     // ETAPA 4: Usar LLM para responder con contexto
     const contexto = topk
-      .map((r, i) => {
-        return `<<Fragmento ${i+1} - Documento: "${r.original_name}" (relevancia: ${r.score.toFixed(2)})>>\n${r.texto}`;
-      })
+      .map((r, i) => `<<Fragmento ${i+1} - Documento: "${r.original_name}" (relevancia: ${r.score.toFixed(2)})>>\n${r.texto}`)
       .join("\n\n---\n\n");
-    
-  
+
     const preguntaDetallada = `${pregunta}
 
 INSTRUCCIONES PARA LA RESPUESTA:
@@ -512,9 +439,9 @@ INSTRUCCIONES PARA LA RESPUESTA:
 - Si encuentras información complementaria o relacionada, inclúyela para enriquecer la respuesta
 
 Recuerda: el objetivo es dar la respuesta MÁS COMPLETA Y ÚTIL posible basándote en la información disponible.`;
-    
+
     const { respuesta } = await responderConContexto(preguntaDetallada, contexto);
-    
+
     const citas = topk.map(r => ({
       id_fragmento: r.id_fragmento,
       id_documento: r.id_documento,
@@ -522,25 +449,20 @@ Recuerda: el objetivo es dar la respuesta MÁS COMPLETA Y ÚTIL posible basándo
       chunk_index: r.chunk_index,
       score: r.score
     }));
-    
+
     return res.json({
       respuesta,
       citas,
       modo: modoFallback ? "palabras" : "embeddings",
       tipo_busqueda: 'documentos',
       ms: Date.now() - t0,
-      stats: {
-        documentos_analizados: idsDocumentos.length,
-        fragmentos_totales: candidatos.length,
-        ...stats
-      }
+      stats: { documentos_analizados: idsDocumentos.length, fragmentos_totales: candidatos.length, ...stats }
     });
-    
+
   } catch (err) {
     logger.error({ err: err.message, stack: err.stack }, "Error en /consulta");
     return res.status(500).json({ error: "Error en búsqueda" });
   }
 });
-
 
 export default router;

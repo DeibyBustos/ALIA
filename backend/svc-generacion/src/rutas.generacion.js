@@ -42,6 +42,7 @@ import { importarCalificaciones } from "./operaciones/calificaciones.importar.op
 import { importarPlaneaciones } from "./operaciones/planeaciones.importar.ops.js";
 import { generarRecomendaciones } from "./recomendaciones/rendimiento.js";
 import { ContextoManager } from "./chat/contexto.manager.js";
+import { consultarPlaneacion } from "./analizadores/intencion.analizador.js";
 
 const router = express.Router();
 
@@ -235,6 +236,16 @@ async function postChatHandler(req, res) {
           respuesta.mensaje = msg.trim();
         }
         break;
+
+      case 'consultar_planeacion': {
+      const resultadoPlaneacion = await consultarPlaneacion(mensaje);
+        respuesta = {
+          exito: true,
+          mensaje: resultadoPlaneacion.mensaje,
+          datos: resultadoPlaneacion.datos
+        };
+        break;
+      }
 
       case 'generar_excel_estudiantes':
         if (!parametros.grado) {
