@@ -61,7 +61,7 @@ Responde SOLO con el nombre de la intención detectada, sin explicaciones adicio
       max_tokens: 50
     });
 
-    const intencion = response.choices[0]?.message?.content.trim().toLowerCase();
+    const intencion = response.choices[0]?.message?.content.trim().toLowerCase().replace(/^["']|["']$/g, '');
     logger.info({ mensaje, intencion }, '🎯 Intención detectada');
 
     return intencion;

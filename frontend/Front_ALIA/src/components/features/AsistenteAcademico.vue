@@ -143,10 +143,19 @@
           <template v-else>
             <div v-if="!contenidoNorm(m.contenido)" class="muted-text">Sin respuesta</div>
             <template v-else-if="contenidoNorm(m.contenido).exito !== undefined">
-              <div :class="['bot-status', contenidoNorm(m.contenido).exito ? 'bot-status--ok' : 'bot-status--bad']">{{ contenidoNorm(m.contenido).mensaje }}</div>
+              <!-- ✅ v-html para renderizar markdown -->
+              <div
+                :class="['bot-status', contenidoNorm(m.contenido).exito ? 'bot-status--ok' : 'bot-status--bad']"
+                v-html="formatearMensaje(contenidoNorm(m.contenido).mensaje)"
+              ></div>
               <a v-if="contenidoNorm(m.contenido).archivo" :href="descargaUrl(m.contenido)" target="_blank" class="download-btn">Descargar {{ contenidoNorm(m.contenido).archivo.tipo }}</a>
             </template>
-            <div v-else-if="contenidoNorm(m.contenido).mensaje" class="message-text">{{ contenidoNorm(m.contenido).mensaje }}</div>
+            <!-- ✅ v-html para renderizar markdown -->
+            <div
+              v-else-if="contenidoNorm(m.contenido).mensaje"
+              class="message-text"
+              v-html="formatearMensaje(contenidoNorm(m.contenido).mensaje)"
+            ></div>
             <pre v-else class="bot-pre">{{ JSON.stringify(contenidoNorm(m.contenido), null, 2) }}</pre>
           </template>
         </div>
@@ -169,6 +178,10 @@
 
 <script setup>
 import { ref, computed, nextTick, watch, onMounted } from 'vue';
+import { marked } from 'marked';
+
+// Configurar marked para que los links abran en nueva pestaña
+marked.setOptions({ breaks: true });
 
 const props = defineProps({
   mensajeInicial: { type: String,   default: '' },
@@ -203,6 +216,12 @@ const mensajeBloqueo = computed(() =>
 );
 
 const sugerencias = ['Generar reporte Excel', 'Agregar calificación', 'Buscar en documentos'];
+
+// ✅ Renderiza markdown a HTML seguro
+function formatearMensaje(texto) {
+  if (!texto) return '';
+  return marked.parse(String(texto));
+}
 
 function contenidoNorm(c) {
   if (c == null) return null;
@@ -434,10 +453,10 @@ onMounted(() => {
 .message-meta { display:flex; align-items:center; gap:6px; font-size:11px; color:#475569; margin-bottom:4px; }
 .message--user .message-meta { flex-direction:row-reverse; }
 .intent-pill { background:#1e3a5f; color:#38bdf8; font-size:10px; padding:1px 7px; border-radius:10px; border:1px solid #1e4976; }
-.message-text { background:#1e293b; border-radius:10px; padding:10px 14px; font-size:13px; color:#e2e8f0; line-height:1.5; }
+.message-text { background:#1e293b; border-radius:10px; padding:10px 14px; font-size:13px; color:#e2e8f0; line-height:1.6; }
 .message--user .message-text { background:linear-gradient(135deg,#1d4ed8,#2563eb); color:white; border-radius:10px 2px 10px 10px; }
 .message--bot  .message-text { border-radius:2px 10px 10px 10px; }
-.bot-status { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:6px; }
+.bot-status { padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:6px; line-height:1.6; }
 .bot-status--ok  { background:#052e16; color:#4ade80; border:1px solid #166534; }
 .bot-status--bad { background:#2d0a0a; color:#f87171; border:1px solid #7f1d1d; }
 .bot-pre { background:#0f172a; border:1px solid #1f2937; border-radius:8px; padding:10px 14px; color:#94a3b8; font-size:11px; overflow-x:auto; margin:0; }
@@ -464,4 +483,20 @@ onMounted(() => {
 .slide-down-enter-to,.slide-down-leave-from { max-height:600px; }
 .fade-enter-active,.fade-leave-active { transition:opacity 0.2s ease; }
 .fade-enter-from,.fade-leave-to { opacity:0; }
+
+/* ✅ Estilos para contenido markdown renderizado */
+.message-text :deep(p)           { margin: 0 0 6px; }
+.message-text :deep(p:last-child){ margin-bottom: 0; }
+.message-text :deep(strong)      { color: #f1f5f9; font-weight: 600; }
+.message-text :deep(ul),
+.message-text :deep(ol)          { margin: 4px 0; padding-left: 18px; }
+.message-text :deep(li)          { margin-bottom: 3px; }
+.message-text :deep(h1),
+.message-text :deep(h2),
+.message-text :deep(h3)          { color: #f1f5f9; margin: 8px 0 4px; font-size: 13px; font-weight: 600; }
+.message-text :deep(code)        { background: #0f172a; padding: 1px 5px; border-radius: 4px; font-size: 12px; color: #7dd3fc; }
+.message-text :deep(hr)          { border: none; border-top: 1px solid #334155; margin: 8px 0; }
+.bot-status :deep(p)             { margin: 0; }
+.bot-status :deep(p + p)         { margin-top: 4px; }
+.bot-status :deep(strong)        { font-weight: 600; }
 </style>

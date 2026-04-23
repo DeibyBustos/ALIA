@@ -117,7 +117,13 @@ export async function eliminarCalificacion(parametros) {
 }
 
 export async function consultarCalificaciones(parametros) {
-  const { estudiante_nombre, asignatura, periodo } = parametros;
+  const { estudiante_nombre, asignatura } = parametros;
+
+   const periodo = (parametros.periodo && 
+                 typeof parametros.periodo === 'string' && 
+                 isNaN(Number(parametros.periodo)))
+  ? parametros.periodo 
+  : null;
 
   const estudiantes = await consultar(`
     SELECT id, nombres, apellidos FROM estudiantes
@@ -164,4 +170,6 @@ export async function consultarCalificaciones(parametros) {
       calificaciones
     }
   };
+
+  
 }

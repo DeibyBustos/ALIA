@@ -47,8 +47,9 @@ import { consultarPlaneacion } from "./analizadores/intencion.analizador.js";
 const router = express.Router();
 
 // ── Directorios de almacenamiento ─────────────────────────────────────────────
-const DOCS_DIR    = path.join(process.cwd(), '..', 'storage', 'generados');
-const UPLOADS_DIR = path.join(process.cwd(), '..', 'storage', 'uploads');
+const STORAGE_BASE = process.env.STORAGE_FS_BASE || path.join(process.cwd(), '..', 'storage');
+const DOCS_DIR     = path.join(STORAGE_BASE, 'generados');
+const UPLOADS_DIR  = path.join(STORAGE_BASE, 'uploads');
 if (!fs.existsSync(DOCS_DIR))    fs.mkdirSync(DOCS_DIR,    { recursive: true });
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
@@ -67,10 +68,8 @@ function generarRutaStorage(nombreOriginal) {
   const fecha = new Date();
   const anioMes = `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
 
-  const carpeta = path.join(process.cwd(), '..', 'storage', anioMes);
-  if (!fs.existsSync(carpeta)) {
-    fs.mkdirSync(carpeta, { recursive: true });
-  }
+  const carpeta = path.join(STORAGE_BASE, anioMes);
+  if (!fs.existsSync(carpeta)) fs.mkdirSync(carpeta, { recursive: true });
 
   const nombreArchivo = `${Date.now()}-${nombreOriginal.replace(/\s+/g, '-')}`;
   const rutaFinal = path.join(carpeta, nombreArchivo);
