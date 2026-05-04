@@ -143,14 +143,12 @@
           <template v-else>
             <div v-if="!contenidoNorm(m.contenido)" class="muted-text">Sin respuesta</div>
             <template v-else-if="contenidoNorm(m.contenido).exito !== undefined">
-              <!-- ✅ v-html para renderizar markdown -->
               <div
                 :class="['bot-status', contenidoNorm(m.contenido).exito ? 'bot-status--ok' : 'bot-status--bad']"
                 v-html="formatearMensaje(contenidoNorm(m.contenido).mensaje)"
               ></div>
               <a v-if="contenidoNorm(m.contenido).archivo" :href="descargaUrl(m.contenido)" target="_blank" class="download-btn">Descargar {{ contenidoNorm(m.contenido).archivo.tipo }}</a>
             </template>
-            <!-- ✅ v-html para renderizar markdown -->
             <div
               v-else-if="contenidoNorm(m.contenido).mensaje"
               class="message-text"
@@ -180,7 +178,6 @@
 import { ref, computed, nextTick, watch, onMounted } from 'vue';
 import { marked } from 'marked';
 
-// Configurar marked para que los links abran en nueva pestaña
 marked.setOptions({ breaks: true });
 
 const props = defineProps({
@@ -208,16 +205,27 @@ const subiendoArchivo     = ref(false);
 const uploadStatus        = ref(null);
 
 const base = computed(() => String(props.base || '').trim().replace(/\/+$/, ''));
-
 const puedeSubir = computed(() => !!archivoSeleccionado.value);
-
 const mensajeBloqueo = computed(() =>
   !archivoSeleccionado.value ? 'Selecciona un archivo para continuar' : ''
 );
 
 const sugerencias = ['Generar reporte Excel', 'Agregar calificación', 'Buscar en documentos'];
 
-// ✅ Renderiza markdown a HTML seguro
+// ── Detecta si la pregunta es sobre un documento ──────────────────────────────
+function esConsultaDocumento(texto) {
+  const lower = texto.toLowerCase();
+  const keysDoc = [
+    'documento', 'el archivo', 'de qué habla', 'que dice',
+    'qué dice', 'qué contiene', 'que contiene',
+    '.pdf', '.docx', '.xlsx', '.txt',
+    'según el', 'en el documento', 'en el archivo',
+    'busca en', 'buscar en', 'revisar', 'menciona',
+    'manual', 'reglamento', 'normativa',
+  ];
+  return keysDoc.some(k => lower.includes(k));
+}
+
 function formatearMensaje(texto) {
   if (!texto) return '';
   return marked.parse(String(texto));
@@ -240,14 +248,8 @@ function autoResize() {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 140) + 'px';
 }
-
-function togglePanel() {
-  mostrarSubida.value = !mostrarSubida.value;
-}
-
-function onTipoCambio() {
-  uploadStatus.value = null;
-}
+function togglePanel() { mostrarSubida.value = !mostrarSubida.value; }
+function onTipoCambio() { uploadStatus.value = null; }
 
 async function subirArchivo() {
   if (!puedeSubir.value || subiendoArchivo.value) return;
@@ -265,7 +267,6 @@ async function subirArchivo() {
         msg: `${j.filas_ok} notas importadas.`,
         lote: { ...j, tipo: 'notas' },
       };
-
     } else if (tipoCarga.value === 'planeaciones') {
       const fd = new FormData();
       fd.append('archivo', archivoSeleccionado.value);
@@ -277,7 +278,6 @@ async function subirArchivo() {
         msg: `${j.filas_ok} planeaciones importadas.`,
         lote: { filas_ok: j.filas_ok, filas_error: j.filas_error, errores: j.errores, tipo: 'planeaciones' },
       };
-
     } else {
       const fd = new FormData();
       fd.append('file', archivoSeleccionado.value);
@@ -292,7 +292,6 @@ async function subirArchivo() {
       if (!r.ok) throw new Error(j?.error || 'Error al subir');
       uploadStatus.value = { ok: true, msg: 'Documento subido. El worker procesará la ingesta.' };
     }
-
     archivoSeleccionado.value = null;
     if (fileInputRef.value) fileInputRef.value.value = '';
   } catch (e) {
@@ -309,6 +308,7 @@ async function cargarConversaciones() {
     conversaciones.value = Array.isArray(j) ? j : [];
   } catch {}
 }
+
 async function nuevaConversacion() {
   try {
     const r = await fetch(`${base.value}/generacion/conversacion`, {
@@ -322,6 +322,7 @@ async function nuevaConversacion() {
     await cargarConversaciones();
   } catch { props.showToast?.('Error creando conversación'); }
 }
+
 async function cargarConversacion(id) {
   try {
     const r = await fetch(`${base.value}/generacion/conversacion/${id}`);
@@ -335,12 +336,14 @@ async function cargarConversacion(id) {
     });
   } catch { props.showToast?.('Error cargando conversación'); }
 }
+
 function onSeleccionConversacion(e) {
   const v = e.target.value;
   if (!v) { nuevaConversacion(); return; }
   cargarConversacion(Number(v));
 }
 
+// ── Enviar mensaje — decide a qué servicio llamar ─────────────────────────────
 async function enviarMensaje() {
   const txt = mensaje.value.trim();
   if (!txt || cargando.value) return;
@@ -350,19 +353,47 @@ async function enviarMensaje() {
   nextTick(() => { if (textareaRef.value) textareaRef.value.style.height = 'auto'; });
   mensajes.value.push({ rol: 'user', contenido: txt });
   cargando.value = true;
+
   try {
-    const r = await fetch(`${base.value}/generacion/chat`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mensaje: txt, id_conversacion: idConversacion.value }),
+    const esDoc = esConsultaDocumento(txt);
+
+    const url  = esDoc
+      ? `${base.value}/busqueda/consulta`
+      : `${base.value}/generacion/chat`;
+
+    const body = esDoc
+      ? { pregunta: txt, id_conversacion: idConversacion.value }
+      : { mensaje: txt,  id_conversacion: idConversacion.value };
+
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
+
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j?.error);
-    mensajes.value.push({ rol: 'assistant', contenido: j.respuesta, intencion: j.intencion });
+
+    // svc-busqueda devuelve { respuesta, citas, ... }
+    // svc-generacion devuelve { respuesta: { exito, mensaje, ... }, intencion, ... }
+    const contenidoFinal = esDoc
+      ? { exito: true, mensaje: j.respuesta }
+      : j.respuesta;
+
+    mensajes.value.push({
+      rol: 'assistant',
+      contenido: contenidoFinal,
+      intencion: j.intencion ?? (esDoc ? 'documentos' : null),
+    });
+
     cargarConversaciones();
   } catch (e) {
     mensajes.value.push({ rol: 'assistant', contenido: { exito: false, mensaje: `Error: ${e?.message}` } });
-  } finally { cargando.value = false; }
+  } finally {
+    cargando.value = false;
+  }
 }
+
 function onKeyDownMensaje(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensaje(); } }
 function onFileChange(e) { archivoSeleccionado.value = e.target.files?.[0] || null; }
 function onDrop(e) { archivoSeleccionado.value = e.dataTransfer.files?.[0] || null; }
@@ -371,6 +402,7 @@ watch(() => base.value, () => {
   idConversacion.value = null; mensajes.value = []; conversaciones.value = [];
   if (base.value) cargarConversaciones();
 });
+
 onMounted(() => {
   if (base.value) cargarConversaciones();
   if (props.mensajeInicial) mensaje.value = props.mensajeInicial;
@@ -404,9 +436,6 @@ onMounted(() => {
 .file-selected { display:flex; align-items:center; gap:6px; color:#22c55e; font-size:12px; overflow:hidden; }
 .notas-section { background:#091525; border:1px solid #1e3a5f; border-radius:8px; padding:12px 14px; margin-bottom:12px; }
 .notas-section-title { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:#38bdf8; margin-bottom:6px; }
-.notas-section-hint { display:flex; flex-direction:column; gap:3px; padding-left:20px; }
-.notas-section-hint span { font-size:11px; color:#64748b; }
-.notas-section-hint b { color:#94a3b8; }
 .upload-footer { display:flex; align-items:center; gap:12px; }
 .upload-hint { font-size:11px; color:#64748b; }
 .btn-upload { display:flex; align-items:center; gap:6px; background:linear-gradient(135deg,#1d4ed8,#3b82f6); border:none; border-radius:7px; color:white; font-size:13px; font-weight:500; padding:8px 16px; cursor:pointer; transition:opacity 0.15s; }
@@ -483,8 +512,6 @@ onMounted(() => {
 .slide-down-enter-to,.slide-down-leave-from { max-height:600px; }
 .fade-enter-active,.fade-leave-active { transition:opacity 0.2s ease; }
 .fade-enter-from,.fade-leave-to { opacity:0; }
-
-/* ✅ Estilos para contenido markdown renderizado */
 .message-text :deep(p)           { margin: 0 0 6px; }
 .message-text :deep(p:last-child){ margin-bottom: 0; }
 .message-text :deep(strong)      { color: #f1f5f9; font-weight: 600; }

@@ -27,6 +27,27 @@ function findCol(columnas, ...nombres) {
   return columnas.find(c => nombres.includes(norm(c))) ?? null;
 }
 
+function parsearFecha(valor) {
+  if (valor == null || valor === '') return null;
+
+  if (valor instanceof Date) {
+    const y = valor.getFullYear();
+    const m = String(valor.getMonth() + 1).padStart(2, '0');
+    const d = String(valor.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  const comoDate = new Date(valor);
+  if (!isNaN(comoDate.getTime())) {
+    const y = comoDate.getFullYear();
+    const m = String(comoDate.getMonth() + 1).padStart(2, '0');
+    const d = String(comoDate.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  return String(valor).trim();
+}
+
 // ─── resolver curso desde grado + asignatura ─────────────────────────────────
 
 const cursoCache = new Map();
@@ -141,7 +162,7 @@ export async function importarCalificaciones({ rutaArchivo, documentoId }) {
     const nombreEv      = String(fila[evalCol]       ?? '').trim();
     const nota          = parsearNota(fila[notaCol]);
     const porcentaje    = porcentajeCol ? parsearNota(fila[porcentajeCol]) : null;
-    const fecha         = fechaCol && fila[fechaCol] ? String(fila[fechaCol]).trim() : null;
+    const fecha = fechaCol && fila[fechaCol] ? parsearFecha(fila[fechaCol]) : null;
 
     if (!gradoVal) {
       errores.push({ fila: numFila, columna: gradoCol, mensaje: 'Grado vacío.' }); continue;

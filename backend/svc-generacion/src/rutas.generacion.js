@@ -114,27 +114,102 @@ async function postChatHandler(req, res) {
         respuesta = await eliminarCalificacion(parametros); break;
       case 'insertar_asistencia':
         respuesta = await insertarAsistencia(parametros); break;
-      case 'consultar_notas':
-        respuesta = await consultarCalificaciones(parametros); break;
-      case 'consultar_asistencias':
-        respuesta = await consultarAsistencias(parametros); break;
+      case 'consultar_notas': {
+        const resultado = await consultarCalificaciones(parametros);
 
-      case 'consultar_estudiantes_grado': {
-        if (!parametros.grado) {
-          respuesta = { exito: false, mensaje: "Necesito el grado para consultar los estudiantes. Indícame el grado, por ejemplo: 6A o 7B." };
+        if (!resultado.exito || !resultado.datos?.calificaciones?.length) {
+          respuesta = resultado;
           break;
         }
-        respuesta = await consultarEstudiantesGrado(parametros);
-        if (respuesta.exito && respuesta.datos?.estudiantes?.length) {
-          const { estudiantes, grado, total } = respuesta.datos;
-          let msg = `El grado ${grado} tiene ${total} estudiante${total === 1 ? '' : 's'} matriculado${total === 1 ? '' : 's'}:\n\n`;
-          estudiantes.forEach((e, i) => {
-            msg += `${i + 1}. ${e.nombres} ${e.apellidos}`;
-            if (e.documento) msg += ` — Documento: ${e.documento}`;
-            msg += '\n';
-          });
-          respuesta.mensaje = msg.trim();
+
+        const datos = resultado.datos;
+        const promptLLM = `Eres un asistente académico que genera resúmenes de calificaciones.
+        REGLAS ESTRICTAS — NUNCA las incumplas:
+        1. PROHIBIDO usar saludos: no escribas "Estimado", "Estimada", "Apreciado" ni nada similar.
+        2. PROHIBIDO usar despedidas: no escribas "Quedo atento", "Quedo a disposición", "Atentamente", "Saludos cordiales" ni nada similar.
+        3. PROHIBIDO incluir firmas: no escribas "[Su Nombre]", "[Su Cargo]" ni ningún campo de firma.
+        4. PROHIBIDO usar emojis.
+        5. Empieza DIRECTAMENTE con "A continuación, presento un resumen de las calificaciones del estudiante [nombre]:".
+        6. Usa este formato exacto:
+          - Primero una lista con el promedio general y las materias con sus evaluaciones y notas.
+          - Luego 1 o 2 párrafos de análisis narrativo mencionando el nombre del estudiante.
+          - Si el promedio es bajo (menor a 3.0), recomienda seguimiento académico.
+          - Si hay varias materias, identifica la de mejor y peor desempeño.
+        7. ADAPTA el contenido según la pregunta original del usuario:
+          - Si preguntó por una nota específica → enfoca el análisis en esa materia/evaluación.
+          - Si preguntó por el promedio → enfoca el análisis en el promedio general y tendencia global.
+          - Si preguntó por todas las notas → presenta el panorama completo.
+
+        Pregunta original del usuario: "${mensaje}"
+        Estudiante: ${datos.estudiante}
+        Promedio general: ${datos.promedio}
+        Calificaciones:
+        ${datos.calificaciones.map(c =>
+          `- ${c.asignatura} | Evaluación: ${c.evaluacion} | Nota: ${c.nota} | Período: ${c.periodo}`
+        ).join('\n')}`;
+
+        const llmResponse = await openai.chat.completions.create({
+          model: process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini',
+          messages: [{ role: 'user', content: promptLLM }],
+          temperature: 0.4,
+          max_tokens: 400
+        });
+
+        respuesta = {
+          exito: true,
+          mensaje: llmResponse.choices[0]?.message?.content,
+          datos  
+        };
+        break;
+      }
+      case 'consultar_asistencias': {
+        const resultado = await consultarAsistencias(parametros);
+
+        if (!resultado.exito || !resultado.datos?.asistencias?.length) {
+          respuesta = resultado;
+          break;
         }
+
+        const datos = resultado.datos;
+        const totalPresente = datos.asistencias.filter(a => a.estado === 'PRESENTE').length;
+        const totalAusente  = datos.asistencias.filter(a => a.estado === 'AUSENTE').length;
+        const totalTarde    = datos.asistencias.filter(a => a.estado === 'TARDE').length;
+
+        const promptLLM = `Eres un asistente académico que genera resúmenes de asistencia.
+      REGLAS ESTRICTAS — NUNCA las incumplas:
+      1. PROHIBIDO usar saludos: no escribas "Estimado", "Estimada", "Apreciado" ni nada similar.
+      2. PROHIBIDO usar despedidas: no escribas "Quedo atento", "Atentamente", "Saludos cordiales" ni nada similar.
+      3. PROHIBIDO incluir firmas: no escribas "[Su Nombre]", "[Su Cargo]" ni ningún campo de firma.
+      4. PROHIBIDO usar emojis.
+      5. Empieza DIRECTAMENTE con "A continuación, presento un resumen de asistencia del estudiante [nombre]:".
+      6. Usa este formato:
+        - Lista con totales: presentes, ausentes, tardanzas y total de registros.
+        - Luego 1 o 2 párrafos de análisis: porcentaje de asistencia, si hay muchas ausencias recomienda seguimiento.
+      7. ADAPTA según la pregunta original:
+        - Si preguntó por faltas → enfoca el análisis en ausencias.
+        - Si preguntó por asistencia general → presenta el panorama completo.
+
+      Pregunta original del usuario: "${mensaje}"
+      Estudiante: ${datos.estudiante}
+      Total registros: ${datos.asistencias.length}
+      Presentes: ${totalPresente}
+      Ausentes: ${totalAusente}
+      Tardanzas: ${totalTarde}
+      Detalle:
+      ${datos.asistencias.map(a => `- ${a.fecha} | ${a.estado}${a.observacion ? ' | ' + a.observacion : ''}`).join('\n')}`;
+
+        const llmResponse = await openai.chat.completions.create({
+          model: process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini',
+          messages: [{ role: 'user', content: promptLLM }],
+          temperature: 0.4,
+          max_tokens: 400
+        });
+
+        respuesta = {
+          exito: true,
+          mensaje: llmResponse.choices[0]?.message?.content,
+          datos
+        };
         break;
       }
 
@@ -195,6 +270,63 @@ async function postChatHandler(req, res) {
         }
         break;
 
+case 'consultar_estudiantes_grado': {
+  if (!parametros.grado) {
+    respuesta = { exito: false, mensaje: "Necesito el grado para consultar los estudiantes. Indícame el grado, por ejemplo: 6A o 7B." };
+    break;
+  }
+
+  const resultadoGrado = await consultarEstudiantesGrado(parametros);
+
+  if (!resultadoGrado.exito || !resultadoGrado.datos?.estudiantes?.length) {
+    respuesta = resultadoGrado;
+    break;
+  }
+
+  const datosGrado = resultadoGrado.datos;
+
+  const promptGrado = `Eres un asistente académico que genera resúmenes de estudiantes por grado.
+  REGLAS ESTRICTAS — NUNCA las incumplas:
+  1. PROHIBIDO usar saludos: no escribas "Estimado", "Estimada" ni nada similar.
+  2. PROHIBIDO usar despedidas: no escribas "Quedo atento", "Atentamente" ni nada similar.
+  3. PROHIBIDO incluir firmas ni campos de firma.
+  4. PROHIBIDO usar emojis.
+  5. Empieza DIRECTAMENTE con "El grado [grado] tiene [total] estudiantes matriculados:".
+  6. Usa este formato:
+    - Lista numerada con nombre completo y documento en formato: "1. Nombre Apellido, documento: 123456".
+    - NO uses guiones para separar el nombre del documento, usa coma seguida de la palabra "documento:".
+    - Al final 1 línea de cierre con el total, por ejemplo: "En total, el grado cuenta con X estudiantes activos."
+  7. ADAPTA según la pregunta:
+    - Si preguntó cuántos hay → enfoca en el total, omite la lista detallada.
+    - Si preguntó quiénes son → presenta la lista completa.
+
+  Pregunta original del usuario: "${mensaje}"
+  Grado: ${datosGrado.grado}
+  Período: ${datosGrado.periodo ?? 'No especificado'}
+  Total: ${datosGrado.total}
+  Estudiantes:
+  ${datosGrado.estudiantes.map((e, i) =>
+    `${i + 1}. ${e.nombres} ${e.apellidos}${e.documento ? ', documento: ' + e.documento : ''}`
+  ).join('\n')}`;
+
+    const llmGrado = await openai.chat.completions.create({
+      model: process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini',
+      messages: [{ role: 'user', content: promptGrado }],
+      temperature: 0.3,
+      max_tokens: 600
+    });
+
+    respuesta = {
+      exito: true,
+      mensaje: llmGrado.choices[0]?.message?.content,
+      datos: datosGrado
+    };
+    break;
+  }
+
+
+
+
       case 'consultar_horario_estudiante':
         if (!parametros.estudiante_nombre) {
           respuesta = { exito: false, mensaje: "Necesito el nombre del estudiante para consultar su horario." }; break;
@@ -215,26 +347,58 @@ async function postChatHandler(req, res) {
         }
         break;
 
-      case 'consultar_horario_docente':
+      case 'consultar_horario_docente': {
         if (!parametros.docente_nombre) {
-          respuesta = { exito: false, mensaje: "Necesito el nombre del docente para consultar su horario." }; break;
+          respuesta = { exito: false, mensaje: "Necesito el nombre del docente para consultar su horario." };
+          break;
         }
-        respuesta = await consultarHorarioDocente(parametros);
-        if (respuesta.exito && respuesta.datos?.horario?.length) {
-          const dias = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-          const { docente, horario } = respuesta.datos;
-          let msg = `Horario de ${docente}:\n\n`;
-          for (const h of horario) {
-            const dia = dias[h.dia_semana] || `Día ${h.dia_semana}`;
-            msg += `${dia} de ${h.hora_inicio} a ${h.hora_fin}: ${h.asignatura}`;
-            if (h.curso)            msg += ` — Curso: ${h.curso}`;
-            if (h.aula_codigo)      msg += ` — Aula: ${h.aula_codigo}`;
-            else if (h.aula_nombre) msg += ` — Aula: ${h.aula_nombre}`;
-            msg += '\n';
-          }
-          respuesta.mensaje = msg.trim();
+
+        const resultado = await consultarHorarioDocente(parametros);
+
+        if (!resultado.exito || !resultado.datos?.horario?.length) {
+          respuesta = resultado;
+          break;
         }
+
+        const datos = resultado.datos;
+        const dias = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+        const promptLLM = `Eres un asistente académico que genera resúmenes de horarios de docentes.
+      REGLAS ESTRICTAS — NUNCA las incumplas:
+      1. PROHIBIDO usar saludos: no escribas "Estimado", "Estimada" ni nada similar.
+      2. PROHIBIDO usar despedidas: no escribas "Quedo atento", "Atentamente" ni nada similar.
+      3. PROHIBIDO incluir firmas ni campos de firma.
+      4. PROHIBIDO usar emojis.
+      5. Empieza DIRECTAMENTE con "A continuación, presento el horario del docente [nombre]:".
+      6. Usa este formato:
+        - Lista organizada por día con hora, materia, curso y aula.
+        - Luego 1 párrafo breve con observación útil: cuántos cursos atiende, días con más carga, etc.
+      7. ADAPTA según la pregunta:
+        - Si preguntó por un curso específico → muestra solo las clases de ese curso.
+        - Si preguntó por un día específico → muestra solo ese día.
+        - Si preguntó el horario completo → presenta todo.
+
+      Pregunta original del usuario: "${mensaje}"
+      Docente: ${datos.docente}
+      Horario:
+      ${datos.horario.map(h =>
+        `- ${dias[h.dia_semana] || 'Día ' + h.dia_semana} | ${h.hora_inicio} - ${h.hora_fin} | ${h.asignatura} | Curso: ${h.curso}${h.aula_codigo ? ' | Aula: ' + h.aula_codigo : h.aula_nombre ? ' | Aula: ' + h.aula_nombre : ''}`
+      ).join('\n')}`;
+
+        const llmResponse = await openai.chat.completions.create({
+          model: process.env.OPENAI_CHAT_MODEL || 'gpt-4o-mini',
+          messages: [{ role: 'user', content: promptLLM }],
+          temperature: 0.4,
+          max_tokens: 400
+        });
+
+        respuesta = {
+          exito: true,
+          mensaje: llmResponse.choices[0]?.message?.content,
+          datos
+        };
         break;
+      }
 
       case 'consultar_planeacion': {
       const resultadoPlaneacion = await consultarPlaneacion(mensaje);
